@@ -35,7 +35,7 @@ type Store = {
   acceptPlace: (id: string) => Promise<Job>;
   submitProof: (
     id: string,
-    proof: { latitude?: number; longitude?: number },
+    proof: { photo: File; latitude?: number; longitude?: number },
   ) => Promise<Job>;
   acceptCheck: (id: string) => Promise<Job>;
   confirmPlacement: (id: string) => Promise<Job>;
@@ -155,6 +155,52 @@ export function WorkerProvider({ children }: { children: ReactNode }) {
     [getAccessToken, refresh],
   );
 
+  const uploadPhoto = useCallback(
+    async (id: string, photo: File) => {
+      const { signedUrl, path } = await authenticatedFetch<{
+        signedUrl: string;
+        path: string;
+      }>(getAccessToken, `/api/worker/jobs/${id}/upload-url`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ contentType: photo.type }),
+      });
+
+      const upload = await fetch(signedUrl, {
+        method: "PUT",
+        headers: { "Content-Type": photo.type },
+        body: photo,
+      });
+
+      if (!upload.ok) {
+        throw new ClientApiError(
+          "Your photo could not be uploaded. Please try again.",
+          upload.status,
+          "UPLOAD_FAILED",
+        );
+      }
+
+      return path;
+    },
+    [getAccessToken],
+  );
+
+  const submitProof = useCallback(
+    async (
+      id: string,
+      proof: { photo: File; latitude?: number; longitude?: number },
+    ) => {
+      const photoPath = await uploadPhoto(id, proof.photo);
+
+      return runAction(id, "submit-proof", {
+        photoPath,
+        latitude: proof.latitude,
+        longitude: proof.longitude,
+      });
+    },
+    [runAction, uploadPhoto],
+  );
+
   const value = useMemo<Store>(
     () => ({
       ready,
@@ -168,7 +214,7 @@ export function WorkerProvider({ children }: { children: ReactNode }) {
       jobById: (id) => jobs.find((job) => job.id === id),
       loadJob,
       acceptPlace: (id) => runAction(id, "accept-placement"),
-      submitProof: (id, proof) => runAction(id, "submit-proof", proof),
+      submitProof,
       acceptCheck: (id) => runAction(id, "accept-check"),
       confirmPlacement: (id) => runAction(id, "confirm"),
       rejectPlacement: (id) => runAction(id, "reject"),
@@ -185,6 +231,7 @@ export function WorkerProvider({ children }: { children: ReactNode }) {
       jobs,
       loadJob,
       runAction,
+      submitProof,
     ],
   );
 

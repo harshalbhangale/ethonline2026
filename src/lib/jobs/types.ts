@@ -26,6 +26,8 @@ export type WorkerJobDto = {
   checkedAt: string | null;
   isInstaller: boolean;
   isVerifier: boolean;
+  /** Signed, short-lived. Only set on the single-job endpoint. */
+  proofPhotoUrl?: string | null;
 };
 
 export type WorkerWalletDto = {

@@ -4,10 +4,15 @@ import {
   PlacementJobStatus,
 } from "@/generated/prisma/client";
 import type { WorkerContext } from "@/lib/auth/require-worker";
+import { distanceInMetres } from "@/lib/campaigns/geo";
 import { getPrismaClient } from "@/lib/database/prisma";
 import { ApiError } from "@/lib/http/api-error";
 import { recordEntry, workerEarnedMinor } from "@/lib/ledger/service";
+import { createProofViewUrl, proofObjectExists } from "@/lib/storage/proofs";
 import type { WorkerJobDto } from "@/lib/jobs/types";
+
+// Loose enough that a drifting phone fix near the venue still passes.
+const proofRadiusMetres = 250;
 
 const jobInclude = {
   campaign: { select: { name: true, deadline: true } },
@@ -134,13 +139,49 @@ export async function listMyJobs(context: WorkerContext) {
 }
 
 export async function getJob(context: WorkerContext, jobId: string) {
-  return toDto(await findJobOrThrow(jobId), context.workerId);
+  const job = await findJobOrThrow(jobId);
+  const dto = toDto(job, context.workerId);
+
+  // The installer's photo is what a verifier is asked to judge, so it is shown
+  // to them and to the installer who took it, and to nobody else.
+  if (job.installerId === context.workerId || job.verifierId === context.workerId) {
+    const proof = await getPrismaClient().placementProof.findFirst({
+      where: {
+        jobId,
+        role: PlacementJobRole.INSTALLER,
+        photoPath: { not: null },
+      },
+      orderBy: { capturedAt: "desc" },
+      select: { photoPath: true },
+    });
+
+    dto.proofPhotoUrl = proof?.photoPath
+      ? await createProofViewUrl(proof.photoPath)
+      : null;
+  }
+
+  return dto;
 }
 
 export async function acceptPlacement(context: WorkerContext, jobId: string) {
   const prisma = getPrismaClient();
 
   const job = await prisma.$transaction(async (transaction) => {
+    const active = await transaction.placementJob.count({
+      where: {
+        installerId: context.workerId,
+        status: PlacementJobStatus.ACCEPTED,
+      },
+    });
+
+    if (active > 0) {
+      throw new ApiError(
+        409,
+        "ALREADY_HOLDING_JOB",
+        "Finish the placement you already accepted first.",
+      );
+    }
+
     // Conditional update: whoever commits first wins, and the loser sees zero
     // rows changed rather than overwriting the winner.
     const claimed = await transaction.placementJob.updateMany({
@@ -180,7 +221,47 @@ export async function submitProof(
 ) {
   const prisma = getPrismaClient();
 
+  if (!proof.photoPath) {
+    throw new ApiError(
+      422,
+      "PHOTO_REQUIRED",
+      "Attach a photo of the poster before submitting.",
+    );
+  }
+
+  // The client only reports a path; confirm the bytes actually landed.
+  if (!(await proofObjectExists(proof.photoPath))) {
+    throw new ApiError(
+      422,
+      "PHOTO_NOT_UPLOADED",
+      "Your photo did not finish uploading. Please try again.",
+    );
+  }
+
   const job = await prisma.$transaction(async (transaction) => {
+    if (proof.latitude !== undefined && proof.longitude !== undefined) {
+      const target = await transaction.placementJob.findUnique({
+        where: { id: jobId },
+        select: { location: { select: { latitude: true, longitude: true } } },
+      });
+
+      if (target) {
+        const metres = distanceInMetres(
+          { latitude: proof.latitude, longitude: proof.longitude },
+          target.location,
+        );
+
+        if (metres > proofRadiusMetres) {
+          throw new ApiError(
+            422,
+            "OUTSIDE_GEOFENCE",
+            "You are too far from the venue to submit proof.",
+            { metresAway: Math.round(metres), allowedMetres: proofRadiusMetres },
+          );
+        }
+      }
+    }
+
     const updated = await transaction.placementJob.updateMany({
       where: {
         id: jobId,

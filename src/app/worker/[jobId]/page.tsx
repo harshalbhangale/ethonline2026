@@ -37,6 +37,7 @@ export default function JobDetail({
   const job = jobById(jobId);
 
   const [shot, setShot] = useState<string | null>(null);
+  const [photo, setPhoto] = useState<File | null>(null);
   const [fix, setFix] = useState<Fix>(null);
   const [locating, setLocating] = useState(false);
   const [jobLoading, setJobLoading] = useState(true);
@@ -91,23 +92,18 @@ export default function JobDetail({
     job.isVerifier ||
     (job.status === "AWAITING_CHECK" && !job.isInstaller);
   const revealed = Boolean(job.placementInstructions);
-  const currentJob = job;
 
   function capture(event: React.ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0];
     if (!file) return;
 
     setShot(URL.createObjectURL(file));
-    setLocating(true);
-    if (!navigator.geolocation) {
-      setFix({
-        latitude: currentJob.latitude,
-        longitude: currentJob.longitude,
-      });
-      setLocating(false);
-      return;
-    }
+    setPhoto(file);
+    setFix(null);
 
+    if (!navigator.geolocation) return;
+
+    setLocating(true);
     navigator.geolocation.getCurrentPosition(
       (pos) => {
         setFix({
@@ -116,13 +112,7 @@ export default function JobDetail({
         });
         setLocating(false);
       },
-      () => {
-        setFix({
-          latitude: currentJob.latitude,
-          longitude: currentJob.longitude,
-        });
-        setLocating(false);
-      },
+      () => setLocating(false),
       { enableHighAccuracy: true, timeout: 8000 },
     );
   }
@@ -282,10 +272,10 @@ export default function JobDetail({
         <>
           {captureBlock}
           <button
-            disabled={!shot || acting}
+            disabled={!photo || locating || acting}
             onClick={() =>
               void runAction(
-                () => submitProof(job.id, fix ?? {}),
+                () => submitProof(job.id, { photo: photo!, ...(fix ?? {}) }),
                 true,
               )
             }
@@ -324,6 +314,19 @@ export default function JobDetail({
 
       {job.status === "CHECK_ACCEPTED" && job.isVerifier && (
         <>
+          {job.proofPhotoUrl && (
+            <div className="mt-6">
+              <h2 className="text-[15px] font-semibold">
+                What the installer submitted
+              </h2>
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={job.proofPhotoUrl}
+                alt="Installer's photo of the poster"
+                className="mt-2 w-full rounded-2xl border border-[var(--line)]"
+              />
+            </div>
+          )}
           {captureBlock}
           <div className="mt-4 flex gap-3">
             <button
