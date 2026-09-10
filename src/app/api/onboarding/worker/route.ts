@@ -1,32 +1,30 @@
 import { OrganizationRole } from "@/generated/prisma/client";
-import { findBrandMembership } from "@/lib/auth/membership";
 import { requireUser } from "@/lib/auth/require-user";
-import type { MeResponse } from "@/lib/auth/types";
 import { getPrismaClient } from "@/lib/database/prisma";
 import { apiErrorResponse } from "@/lib/http/api-error";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
+const WORKER_ORG_SLUG = "stickerbomb-workers";
+
 export async function POST(request: Request) {
   try {
     const user = await requireUser(request);
     const prisma = getPrismaClient();
-    const membership = await prisma.$transaction(async (transaction) => {
-      const existing = await findBrandMembership(transaction, user.userId);
-      if (existing) return existing;
 
+    const profile = await prisma.$transaction(async (transaction) => {
       const organization = await transaction.organization.upsert({
-        where: { slug: `brand-${user.userId}` },
+        where: { slug: WORKER_ORG_SLUG },
         update: {},
         create: {
-          name: "My brand",
-          slug: `brand-${user.userId}`,
+          name: "StickerBomb workers",
+          slug: WORKER_ORG_SLUG,
           createdById: user.userId,
         },
       });
 
-      return transaction.organizationMember.upsert({
+      await transaction.organizationMember.upsert({
         where: {
           organizationId_userId: {
             organizationId: organization.id,
@@ -37,26 +35,24 @@ export async function POST(request: Request) {
         create: {
           organizationId: organization.id,
           userId: user.userId,
-          role: OrganizationRole.BRAND,
+          role: OrganizationRole.WORKER,
         },
-        include: { organization: true },
+      });
+
+      return transaction.workerProfile.upsert({
+        where: { userId: user.userId },
+        update: {},
+        create: { userId: user.userId },
       });
     });
 
-    const response: MeResponse = {
-      user: {
-        id: user.userId,
-        privyUserId: user.privyUserId,
+    return Response.json({
+      worker: {
+        id: profile.id,
+        createdAt: profile.createdAt.toISOString(),
       },
-      organization: {
-        id: membership.organization.id,
-        name: membership.organization.name,
-      },
-      role: membership.role,
-      worker: null,
-    };
-
-    return Response.json(response);
+      role: OrganizationRole.WORKER,
+    });
   } catch (error) {
     return apiErrorResponse(error);
   }

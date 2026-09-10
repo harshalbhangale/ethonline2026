@@ -10,4 +10,7 @@ export type MeResponse = {
     name: string;
   } | null;
   role: OrganizationRoleValue | null;
+  worker: {
+    id: string;
+  } | null;
 };

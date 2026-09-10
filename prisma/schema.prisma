@@ -74,6 +74,32 @@ enum CampaignAssetStatus {
   DISABLED
 }
 
+/// Lifecycle of one poster placement, from dispatch to payout.
+enum PlacementJobStatus {
+  OPEN
+  ACCEPTED
+  AWAITING_CHECK
+  CHECK_ACCEPTED
+  VERIFIED
+  REJECTED
+  EXPIRED
+}
+
+enum PlacementJobRole {
+  INSTALLER
+  VERIFIER
+}
+
+/// Why a ledger entry exists. Every balance change names its cause.
+enum LedgerEntryKind {
+  CAMPAIGN_FUNDING
+  PLACEMENT_HOLD
+  HOLD_RELEASE
+  INSTALLER_PAYOUT
+  VERIFIER_PAYOUT
+  REFUND
+}
+
 model User {
   id                   String               @id @default(cuid())
   privyUserId          String               @unique @map("privy_user_id") @db.VarChar(255)
@@ -83,6 +109,7 @@ model User {
   memberships          OrganizationMember[]
   createdOrganizations Organization[]       @relation("OrganizationCreator")
   campaignsCreated     Campaign[]           @relation("CampaignCreator")
+  workerProfile        WorkerProfile?
 
   @@map("users")
 }
@@ -134,6 +161,7 @@ model Location {
   updatedAt             DateTime                 @updatedAt @map("updated_at") @db.Timestamptz(3)
   campaignLocations     CampaignLocation[]
   assets                CampaignAsset[]
+  placementJobs         PlacementJob[]
 
   @@index([countryCode, city])
   @@index([permissionStatus])
@@ -185,6 +213,8 @@ model Campaign {
   quotes           CampaignQuote[]
   assets           CampaignAsset[]
   scanEvents       ScanEvent[]
+  placementJobs    PlacementJob[]
+  ledgerEntries    LedgerEntry[]
 
   @@index([organizationId, updatedAt(sort: Desc)])
   @@index([createdById])
@@ -275,6 +305,7 @@ model CampaignAsset {
   campaign         Campaign            @relation(fields: [campaignId], references: [id], onDelete: Cascade)
   location         Location?           @relation(fields: [locationId], references: [id], onDelete: SetNull)
   scanEvents       ScanEvent[]
+  placementJob     PlacementJob?
 
   @@unique([campaignId, sequence])
   @@index([campaignId])
@@ -301,4 +332,113 @@ model ScanEvent {
   @@index([assetId, createdAt(sort: Desc)])
   @@index([sessionHash])
   @@map("scan_events")
+}
+
+/// Someone who places and checks posters.
+///
+/// One profile per signed-in account. The profile id — not the Privy user id —
+/// is what jobs reference, so the "you cannot check your own placement" rule has
+/// a single stable subject to compare against.
+model WorkerProfile {
+  id            String         @id @default(cuid())
+  userId        String         @unique @map("user_id")
+  displayName   String?        @map("display_name") @db.VarChar(80)
+  createdAt     DateTime       @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt     DateTime       @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  user          User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  installerJobs PlacementJob[] @relation("JobInstaller")
+  verifierJobs  PlacementJob[] @relation("JobVerifier")
+  ledgerEntries LedgerEntry[]
+
+  @@map("worker_profiles")
+}
+
+/// One unit of physical work: put up a specific poster at a specific place,
+/// then have a different verified human confirm it.
+///
+/// Created from a CampaignAsset once its campaign is funded, so a job only ever
+/// exists for money that is already held.
+model PlacementJob {
+  id             String             @id @default(cuid())
+  campaignId     String             @map("campaign_id")
+  assetId        String             @unique @map("asset_id")
+  locationId     String             @map("location_id")
+  status         PlacementJobStatus @default(OPEN)
+
+  installerFeeMinor BigInt          @map("installer_fee_minor")
+  verifierFeeMinor  BigInt          @map("verifier_fee_minor")
+  currency          String          @default("USD") @db.VarChar(12)
+
+  installerId    String?            @map("installer_id")
+  verifierId     String?            @map("verifier_id")
+
+  acceptedAt     DateTime?          @map("accepted_at") @db.Timestamptz(3)
+  proofAt        DateTime?          @map("proof_at") @db.Timestamptz(3)
+  checkAcceptedAt DateTime?         @map("check_accepted_at") @db.Timestamptz(3)
+  checkedAt      DateTime?          @map("checked_at") @db.Timestamptz(3)
+  deadline       DateTime?          @db.Timestamptz(3)
+  rejectionReason String?           @map("rejection_reason") @db.Text
+
+  createdAt      DateTime           @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt      DateTime           @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  campaign       Campaign           @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  asset          CampaignAsset      @relation(fields: [assetId], references: [id], onDelete: Cascade)
+  location       Location           @relation(fields: [locationId], references: [id], onDelete: Restrict)
+  installer      WorkerProfile?     @relation("JobInstaller", fields: [installerId], references: [id], onDelete: SetNull)
+  verifier       WorkerProfile?     @relation("JobVerifier", fields: [verifierId], references: [id], onDelete: SetNull)
+  proofs         PlacementProof[]
+  ledgerEntries  LedgerEntry[]
+
+  @@index([status, createdAt(sort: Desc)])
+  @@index([campaignId])
+  @@index([installerId])
+  @@index([verifierId])
+  @@index([locationId])
+  @@map("placement_jobs")
+}
+
+/// Evidence submitted by an installer, and the verifier's decision on it.
+model PlacementProof {
+  id           String           @id @default(cuid())
+  jobId        String           @map("job_id")
+  submittedById String          @map("submitted_by")
+  role         PlacementJobRole
+  photoPath    String?          @map("photo_path") @db.Text
+  latitude     Float?
+  longitude    Float?
+  accuracyMeters Float?         @map("accuracy_meters")
+  capturedAt   DateTime         @default(now()) @map("captured_at") @db.Timestamptz(3)
+
+  job          PlacementJob     @relation(fields: [jobId], references: [id], onDelete: Cascade)
+
+  @@index([jobId, capturedAt(sort: Desc)])
+  @@map("placement_proofs")
+}
+
+/// Double-entry-ish record of every movement of campaign money.
+///
+/// Balances are never stored as a mutable number: a worker's balance is the sum
+/// of their ledger entries, so a payout cannot be applied twice without leaving
+/// a trace. `jobId` + `kind` is unique, which is what makes payouts idempotent.
+model LedgerEntry {
+  id           String          @id @default(cuid())
+  campaignId   String?         @map("campaign_id")
+  jobId        String?         @map("job_id")
+  workerId     String?         @map("worker_id")
+  kind         LedgerEntryKind
+  amountMinor  BigInt          @map("amount_minor")
+  currency     String          @default("USD") @db.VarChar(12)
+  memo         String?         @db.VarChar(240)
+  createdAt    DateTime        @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  campaign     Campaign?       @relation(fields: [campaignId], references: [id], onDelete: SetNull)
+  job          PlacementJob?   @relation(fields: [jobId], references: [id], onDelete: SetNull)
+  worker       WorkerProfile?  @relation(fields: [workerId], references: [id], onDelete: SetNull)
+
+  @@unique([jobId, kind])
+  @@index([workerId, createdAt(sort: Desc)])
+  @@index([campaignId])
+  @@map("ledger_entries")
 }

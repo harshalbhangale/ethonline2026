@@ -16,7 +16,8 @@
     "db:migrate": "prisma migrate dev",
     "db:seed": "prisma db seed",
     "db:deploy": "prisma migrate deploy",
-    "db:studio": "prisma studio"
+    "db:studio": "prisma studio",
+    "db:backfill-jobs": "tsx --env-file=.env.local scripts/backfill-placement-jobs.ts"
   },
   "dependencies": {
     "@mapbox/search-js-react": "1.6.0",
@@ -47,6 +48,7 @@
     "eslint-config-next": "15.5.25",
     "prisma": "7.10.0",
     "tailwindcss": "^4.0.0",
+    "tsx": "^4.23.13",
     "typescript": "^5"
   }
 }

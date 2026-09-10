@@ -11,7 +11,10 @@ export async function GET(request: Request) {
   try {
     const user = await requireUser(request);
     const prisma = getPrismaClient();
-    const membership = await findPrimaryMembership(prisma, user.userId);
+    const [membership, workerProfile] = await Promise.all([
+      findPrimaryMembership(prisma, user.userId),
+      prisma.workerProfile.findUnique({ where: { userId: user.userId } }),
+    ]);
 
     const response: MeResponse = {
       user: {
@@ -25,6 +28,7 @@ export async function GET(request: Request) {
           }
         : null,
       role: membership?.role ?? null,
+      worker: workerProfile ? { id: workerProfile.id } : null,
     };
 
     return Response.json(response);

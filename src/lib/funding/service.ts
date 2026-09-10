@@ -1,5 +1,7 @@
 import { randomUUID } from "node:crypto";
-import { CampaignStatus } from "@/generated/prisma/client";
+import { CampaignStatus, LedgerEntryKind } from "@/generated/prisma/client";
+import { dispatchJobsForCampaign } from "@/lib/jobs/dispatch";
+import { recordEntry } from "@/lib/ledger/service";
 import { generateCampaignAssets } from "@/lib/assets/service";
 import type { BrandContext } from "@/lib/auth/require-brand";
 import { getPrismaClient } from "@/lib/database/prisma";
@@ -119,6 +121,19 @@ export async function fundCampaign(
   // Assets can only be issued once funding is committed, and generation moves
   // the campaign on to ASSETS_READY.
   const assets = await generateCampaignAssets(context, campaignId, appUrl);
+
+  // Money in, then one job per poster with its fees held against that money.
+  await prisma.$transaction(async (transaction) => {
+    await recordEntry(transaction, {
+      kind: LedgerEntryKind.CAMPAIGN_FUNDING,
+      amountMinor: BigInt(quote.totalMinor),
+      campaignId,
+      currency: campaign.currency,
+      memo: fundingReference,
+    });
+
+    await dispatchJobsForCampaign(transaction, campaignId);
+  });
 
   return { quote, assets, mocked: true, fundingReference };
 }
