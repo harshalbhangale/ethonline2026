@@ -3,7 +3,8 @@ import { ApiError } from "@/lib/http/api-error";
 
 let privyClient: PrivyClient | undefined;
 
-function getPrivyClient() {
+/** Shared server-side Privy client for auth, wallets and policies. */
+export function getPrivyClient() {
   const appId = process.env.NEXT_PUBLIC_PRIVY_APP_ID;
   const appSecret = process.env.PRIVY_APP_SECRET;
 
@@ -15,7 +16,14 @@ function getPrivyClient() {
     );
   }
 
-  privyClient ??= new PrivyClient({ appId, appSecret });
+  // Fail fast rather than holding a brand's request open for minutes when a
+  // Privy endpoint is slow.
+  privyClient ??= new PrivyClient({
+    appId,
+    appSecret,
+    timeout: 30_000,
+    maxRetries: 1,
+  });
   return privyClient;
 }
 

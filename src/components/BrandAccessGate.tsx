@@ -15,17 +15,85 @@ type GateState = {
   error: string | null;
 };
 
+type CachedAccess = { userId: string; at: number };
+
+/**
+ * The last successful access check is remembered so the portal renders
+ * immediately on the next load while Privy starts and the check re-runs in the
+ * background. This is only about speed: every API call is still authorized on
+ * the server, so a stale cache can show the shell but never any data.
+ */
+const ACCESS_CACHE_KEY = "sb-brand-access";
+const ACCESS_CACHE_TTL_MS = 12 * 60 * 60 * 1000;
+
+function readCachedAccess(): CachedAccess | null {
+  try {
+    const raw = localStorage.getItem(ACCESS_CACHE_KEY);
+    if (!raw) return null;
+    const cached = JSON.parse(raw) as CachedAccess;
+    return Date.now() - cached.at < ACCESS_CACHE_TTL_MS ? cached : null;
+  } catch {
+    return null;
+  }
+}
+
+function writeCachedAccess(userId: string | null) {
+  try {
+    if (userId) {
+      localStorage.setItem(ACCESS_CACHE_KEY, JSON.stringify({ userId, at: Date.now() }));
+    } else {
+      localStorage.removeItem(ACCESS_CACHE_KEY);
+    }
+  } catch {
+    // Storage can be unavailable (private mode); the gate still works.
+  }
+}
+
+/** Looks like the portal, so the wait feels like loading rather than a wall. */
+function PortalSkeleton() {
+  return (
+    <div className="min-h-screen" aria-busy="true" aria-label="Loading your workspace">
+      <aside className="fixed inset-y-0 left-0 hidden w-[248px] border-r border-line px-4 py-6 lg:block">
+        <div className="mb-9 h-6 w-32 animate-pulse rounded-lg bg-raised" />
+        <div className="space-y-2">
+          {[0, 1, 2, 3].map((item) => (
+            <div key={item} className="h-12 animate-pulse rounded-2xl bg-raised/70" />
+          ))}
+        </div>
+      </aside>
+      <div className="lg:pl-[248px]">
+        <div className="h-[65px] border-b border-line" />
+        <main className="mx-auto w-full max-w-[1120px] space-y-5 px-5 py-10 sm:px-8 sm:py-12">
+          <div className="h-10 w-64 animate-pulse rounded-xl bg-raised" />
+          <div className="grid gap-4 sm:grid-cols-3">
+            {[0, 1, 2].map((item) => (
+              <div key={item} className="h-28 animate-pulse rounded-[20px] bg-raised" />
+            ))}
+          </div>
+          <div className="h-72 animate-pulse rounded-[20px] bg-raised" />
+        </main>
+      </div>
+    </div>
+  );
+}
+
 export default function BrandAccessGate({ children }: { children: ReactNode }) {
   const router = useRouter();
   const { ready, authenticated, user, getAccessToken } = usePrivy();
   const userId = ready && authenticated ? user?.id ?? null : null;
   const requestSequence = useRef(0);
   const requestController = useRef<AbortController | null>(null);
+  const [cached, setCached] = useState<CachedAccess | null>(null);
   const [state, setState] = useState<GateState>({
     scope: null,
     status: "checking",
     error: null,
   });
+
+  // Read after mount so server and client render the same first frame.
+  useEffect(() => {
+    setCached(readCachedAccess());
+  }, []);
 
   const cancelRequest = useCallback(() => {
     ++requestSequence.current;
@@ -53,10 +121,13 @@ export default function BrandAccessGate({ children }: { children: ReactNode }) {
         }
 
         if (response.role === "BRAND" || response.role === "OPERATOR") {
+          writeCachedAccess(scope);
           setState({ scope, status: "authorized", error: null });
           return;
         }
 
+        writeCachedAccess(null);
+        setCached(null);
         setState({ scope, status: "redirecting", error: null });
         router.replace(response.role === "WORKER" ? "/worker" : "/");
       } catch (caught) {
@@ -64,7 +135,9 @@ export default function BrandAccessGate({ children }: { children: ReactNode }) {
           return;
         }
 
-        if (caught instanceof ClientApiError && caught.status === 401) {
+        if (caught instanceof ClientApiError && (caught.status === 401 || caught.status === 403)) {
+          writeCachedAccess(null);
+          setCached(null);
           setState({ scope, status: "redirecting", error: null });
           router.replace("/");
           return;
@@ -92,6 +165,8 @@ export default function BrandAccessGate({ children }: { children: ReactNode }) {
 
     if (!authenticated || !userId) {
       cancelRequest();
+      writeCachedAccess(null);
+      setCached(null);
       setState({ scope: null, status: "redirecting", error: null });
       router.replace("/");
       return;
@@ -109,10 +184,16 @@ export default function BrandAccessGate({ children }: { children: ReactNode }) {
     router,
   ]);
 
-  const authorized =
+  const verified =
     Boolean(userId) && state.scope === userId && state.status === "authorized";
+  // Optimistic: the same user was authorized recently and nothing has said otherwise.
+  const optimistic =
+    cached !== null &&
+    (!ready || cached.userId === userId) &&
+    state.status !== "redirecting" &&
+    state.status !== "error";
 
-  if (authorized) return children;
+  if (verified || optimistic) return children;
 
   if (state.scope === userId && state.status === "error") {
     return (
@@ -133,11 +214,5 @@ export default function BrandAccessGate({ children }: { children: ReactNode }) {
     );
   }
 
-  return (
-    <main className="flex min-h-screen items-center justify-center px-5 py-12">
-      <span className="inline-flex h-11 items-center rounded-xl border border-line px-5 text-[13.5px] font-semibold text-muted">
-        Checking workspace access…
-      </span>
-    </main>
-  );
+  return <PortalSkeleton />;
 }

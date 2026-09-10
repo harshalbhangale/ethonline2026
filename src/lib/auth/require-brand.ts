@@ -1,5 +1,5 @@
 import { OrganizationRole } from "@/generated/prisma/client";
-import { findBrandMembership } from "@/lib/auth/membership";
+import { verifyPrivyRequest } from "@/lib/auth/privy";
 import { requireUser } from "@/lib/auth/require-user";
 import { getPrismaClient } from "@/lib/database/prisma";
 import { ApiError } from "@/lib/http/api-error";
@@ -12,23 +12,54 @@ export type BrandContext = {
   role: OrganizationRole;
 };
 
+function brandAccessRequired() {
+  return new ApiError(
+    403,
+    "BRAND_ACCESS_REQUIRED",
+    "This account does not have access to the brand portal.",
+  );
+}
+
+/**
+ * Resolves the caller's brand organization from server-side records.
+ *
+ * The user and their brand membership load in one query, since this runs on
+ * every Brand Portal request.
+ */
 export async function requireBrandContext(
   request: Request,
 ): Promise<BrandContext> {
-  const user = await requireUser(request);
-  const prisma = getPrismaClient();
-  const membership = await findBrandMembership(prisma, user.userId);
+  const claims = await verifyPrivyRequest(request);
+  const user = await getPrismaClient().user.findUnique({
+    where: { privyUserId: claims.user_id },
+    select: {
+      id: true,
+      privyUserId: true,
+      memberships: {
+        where: {
+          role: { in: [OrganizationRole.BRAND, OrganizationRole.OPERATOR] },
+        },
+        select: {
+          role: true,
+          organization: { select: { id: true, name: true } },
+        },
+        orderBy: [{ createdAt: "asc" }, { organizationId: "asc" }],
+        take: 1,
+      },
+    },
+  });
 
-  if (!membership) {
-    throw new ApiError(
-      403,
-      "BRAND_ACCESS_REQUIRED",
-      "This account does not have access to the brand portal.",
-    );
+  if (!user) {
+    // First request from this identity: record it, but it has no brand yet.
+    await requireUser(request);
+    throw brandAccessRequired();
   }
 
+  const membership = user.memberships[0];
+  if (!membership) throw brandAccessRequired();
+
   return {
-    userId: user.userId,
+    userId: user.id,
     privyUserId: user.privyUserId,
     organizationId: membership.organization.id,
     organizationName: membership.organization.name,

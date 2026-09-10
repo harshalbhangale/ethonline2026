@@ -14,6 +14,7 @@ import type {
   PlacementListResponse,
   PlacementSummaryDto,
 } from "@/lib/placements/types";
+import { isCreRunnerAvailable } from "@/lib/verification/runner";
 
 /**
  * Opens one placement and one installer job for every ready asset of a funded
@@ -77,6 +78,19 @@ const placementInclude = {
   campaign: { select: { id: true, name: true } },
   asset: { select: { shortCode: true, sequence: true } },
   location: { select: { id: true, venueName: true, city: true } },
+  // Proof status only; coordinates and media never leave the server.
+  evidence: {
+    select: { role: true, status: true },
+    orderBy: { createdAt: "desc" },
+  },
+  chainTransactions: {
+    select: { kind: true, txHash: true, status: true, createdAt: true },
+    orderBy: { createdAt: "asc" },
+  },
+  verificationRuns: {
+    orderBy: { createdAt: "desc" },
+    take: 1,
+  },
   // Deliberately no worker fields: the brand sees progress, not people.
   jobs: {
     select: {
@@ -102,12 +116,38 @@ function toIso(value: Date | null) {
 }
 
 function toPlacementDto(placement: PlacementWithRelations): PlacementDto {
+  const latestProof = (role: JobRole) =>
+    placement.evidence.find((item) => item.role === role)?.status ?? null;
+  const run = placement.verificationRuns[0];
+
   return {
     id: placement.id,
     campaign: placement.campaign,
     status: placement.status,
     asset: placement.asset,
     location: placement.location,
+    onchain: { placementKey: placement.onchainPlacementId },
+    proofs: {
+      installer: latestProof(JobRole.INSTALLER),
+      verifier: latestProof(JobRole.VERIFIER),
+    },
+    verification: run
+      ? {
+          status: run.status,
+          mode: run.mode,
+          approved: run.approved,
+          reasons: run.reasons,
+          txHash: run.txHash,
+          startedAt: toIso(run.startedAt),
+          finishedAt: toIso(run.finishedAt),
+        }
+      : null,
+    transactions: placement.chainTransactions.map((transaction) => ({
+      kind: transaction.kind,
+      txHash: transaction.txHash,
+      status: transaction.status,
+      createdAt: transaction.createdAt.toISOString(),
+    })),
     jobs: placement.jobs.map((job) => ({
       role: job.role,
       status: job.status,
@@ -156,6 +196,7 @@ function toListResponse(
   return {
     placements: placements.map(toPlacementDto),
     summary: summarize(placements),
+    verificationAvailable: isCreRunnerAvailable(),
   };
 }
 

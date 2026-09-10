@@ -162,9 +162,11 @@ export default function CampaignWizard() {
         };
   const { campaign, loading, error } = current;
 
-  // A campaign that has left DRAFT is no longer editable through the wizard.
+  // A funded campaign is no longer handled by the wizard. QUOTED stays: its
+  // quote is approved but funding failed or awaits approval, so the brand must
+  // be able to come back to the fund step.
   useEffect(() => {
-    if (campaign && campaign.status !== "DRAFT") {
+    if (campaign && campaign.status !== "DRAFT" && campaign.status !== "QUOTED") {
       router.replace(`/brand/campaigns/${campaign.id}`);
     }
   }, [campaign, router]);

@@ -120,6 +120,46 @@ enum WorkerRiskStatus {
   BLOCKED
 }
 
+enum EvidenceStatus {
+  SUBMITTED
+  ACCEPTED
+  REJECTED
+}
+
+enum ChainTransactionKind {
+  TREASURY_TOPUP
+  GAS_TOPUP
+  USDC_APPROVE
+  CAMPAIGN_FUND
+  PLACEMENT_REGISTER
+  WORKERS_ASSIGN
+  PLACEMENT_VERIFIED
+  PLACEMENT_REJECTED
+  CLEANUP_RELEASE
+  CAMPAIGN_REFUND
+}
+
+enum ChainTransactionStatus {
+  PENDING
+  CONFIRMED
+  FAILED
+}
+
+enum FundingRequestStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  EXECUTED
+  FAILED
+}
+
+enum VerificationRunStatus {
+  QUEUED
+  RUNNING
+  SUCCEEDED
+  FAILED
+}
+
 model User {
   id                   String               @id @default(cuid())
   privyUserId          String               @unique @map("privy_user_id") @db.VarChar(255)
@@ -129,6 +169,9 @@ model User {
   memberships          OrganizationMember[]
   createdOrganizations Organization[]       @relation("OrganizationCreator")
   campaignsCreated     Campaign[]           @relation("CampaignCreator")
+  evidence             Evidence[]
+  fundingRequested     FundingRequest[]     @relation("FundingRequester")
+  fundingDecided       FundingRequest[]     @relation("FundingDecider")
   installedPlacements  Placement[]          @relation("PlacementInstaller")
   verifiedPlacements   Placement[]          @relation("PlacementVerifier")
   jobs                 Job[]                @relation("JobWorker")
@@ -144,9 +187,18 @@ model Organization {
   createdById String               @map("created_by")
   createdAt   DateTime             @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt   DateTime             @updatedAt @map("updated_at") @db.Timestamptz(3)
+  /// Privy server wallet that holds the organization's stablecoin treasury.
+  treasuryWalletId       String?              @unique @map("treasury_wallet_id") @db.VarChar(64)
+  treasuryAddress        String?              @map("treasury_address") @db.VarChar(64)
+  /// Privy policy restricting the treasury to escrow funding on Sepolia.
+  treasuryPolicyId       String?              @map("treasury_policy_id") @db.VarChar(64)
+  /// Funding above this amount (minor units) needs a second member's approval.
+  approvalThresholdMinor BigInt?              @map("approval_threshold_minor")
   creator     User                 @relation("OrganizationCreator", fields: [createdById], references: [id], onDelete: Restrict)
   members     OrganizationMember[]
   campaigns   Campaign[]
+  chainTransactions ChainTransaction[]
+  fundingRequests   FundingRequest[]
 
   @@index([createdById])
   @@map("organizations")
@@ -225,6 +277,12 @@ model Campaign {
   fundedAt         DateTime?           @map("funded_at") @db.Timestamptz(3)
   fundingReference String?             @map("funding_reference") @db.VarChar(120)
 
+  /// keccak256 key of this campaign inside CampaignEscrow.
+  escrowCampaignId  String?            @unique @map("escrow_campaign_id") @db.VarChar(66)
+  escrowAddress     String?            @map("escrow_address") @db.VarChar(42)
+  /// Amount deposited into escrow, in USD minor units.
+  fundedAmountMinor BigInt?            @map("funded_amount_minor")
+
   createdById      String              @map("created_by")
   createdAt        DateTime            @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt        DateTime            @updatedAt @map("updated_at") @db.Timestamptz(3)
@@ -238,6 +296,8 @@ model Campaign {
   scanEvents       ScanEvent[]
   placements       Placement[]
   jobs             Job[]
+  chainTransactions ChainTransaction[]
+  fundingRequests  FundingRequest[]
 
   @@index([organizationId, updatedAt(sort: Desc)])
   @@index([createdById])
@@ -382,6 +442,9 @@ model Placement {
   installer          User?           @relation("PlacementInstaller", fields: [installerUserId], references: [id], onDelete: Restrict)
   verifier           User?           @relation("PlacementVerifier", fields: [verifierUserId], references: [id], onDelete: Restrict)
   jobs               Job[]
+  evidence           Evidence[]
+  chainTransactions  ChainTransaction[]
+  verificationRuns   VerificationRun[]
 
   @@index([campaignId])
   @@index([locationId])
@@ -412,6 +475,7 @@ model Job {
   placement     Placement @relation(fields: [placementId], references: [id], onDelete: Cascade)
   campaign      Campaign  @relation(fields: [campaignId], references: [id], onDelete: Cascade)
   worker        User?     @relation("JobWorker", fields: [workerUserId], references: [id], onDelete: Restrict)
+  evidence      Evidence[]
 
   @@unique([placementId, role])
   @@index([campaignId])
@@ -435,4 +499,115 @@ model WorkerProfile {
   user              User              @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@map("worker_profiles")
+}
+
+/// Proof captured at a placement. Exact coordinates and media fingerprints are
+/// sensitive: they are read only by the confidential CRE workflow and are never
+/// returned to brands or written onchain.
+model Evidence {
+  id                 String         @id @default(cuid())
+  placementId        String         @map("placement_id")
+  jobId              String         @map("job_id")
+  role               JobRole
+  workerUserId       String         @map("worker_user_id")
+  scannedShortCode   String         @map("scanned_short_code") @db.VarChar(32)
+  latitude           Float
+  longitude          Float
+  accuracyMeters     Float?         @map("accuracy_meters")
+  capturedAt         DateTime       @map("captured_at") @db.Timestamptz(3)
+  challengeSymbol    String         @map("challenge_symbol") @db.VarChar(16)
+  challengeResponse  String         @map("challenge_response") @db.VarChar(16)
+  challengeIssuedAt  DateTime       @map("challenge_issued_at") @db.Timestamptz(3)
+  challengeExpiresAt DateTime       @map("challenge_expires_at") @db.Timestamptz(3)
+  /// sha256 of the captured media, hex with 0x prefix.
+  mediaHash          String         @map("media_hash") @db.VarChar(66)
+  mediaPath          String?        @map("media_path") @db.Text
+  status             EvidenceStatus @default(SUBMITTED)
+  rejectionReason    String?        @map("rejection_reason") @db.VarChar(64)
+  createdAt          DateTime       @default(now()) @map("created_at") @db.Timestamptz(3)
+  placement          Placement      @relation(fields: [placementId], references: [id], onDelete: Cascade)
+  job                Job            @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  worker             User           @relation(fields: [workerUserId], references: [id], onDelete: Restrict)
+
+  @@index([placementId, role])
+  @@index([mediaHash])
+  @@map("evidence")
+}
+
+/// A transaction StickerBomb sent or observed on Sepolia. Balances are always
+/// read from chain; this table is the human-readable history.
+model ChainTransaction {
+  id             String                 @id @default(cuid())
+  organizationId String?                @map("organization_id")
+  campaignId     String?                @map("campaign_id")
+  placementId    String?                @map("placement_id")
+  kind           ChainTransactionKind
+  status         ChainTransactionStatus @default(PENDING)
+  chainId        Int                    @map("chain_id")
+  txHash         String                 @map("tx_hash") @db.VarChar(66)
+  logIndex       Int                    @default(-1) @map("log_index")
+  fromAddress    String?                @map("from_address") @db.VarChar(42)
+  toAddress      String?                @map("to_address") @db.VarChar(42)
+  /// Token base units (6 decimals) for stablecoin moves, wei for gas top-ups.
+  amount         String?                @db.VarChar(80)
+  /// True when the transaction was signed by a Privy wallet.
+  viaPrivy       Boolean                @default(false) @map("via_privy")
+  blockNumber    BigInt?                @map("block_number")
+  createdAt      DateTime               @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt      DateTime               @updatedAt @map("updated_at") @db.Timestamptz(3)
+  organization   Organization?          @relation(fields: [organizationId], references: [id], onDelete: SetNull)
+  campaign       Campaign?              @relation(fields: [campaignId], references: [id], onDelete: SetNull)
+  placement      Placement?             @relation(fields: [placementId], references: [id], onDelete: SetNull)
+
+  @@unique([txHash, logIndex, kind])
+  @@index([organizationId, createdAt(sort: Desc)])
+  @@index([campaignId])
+  @@index([placementId])
+  @@map("chain_transactions")
+}
+
+/// A campaign funding that exceeded the organization's approval threshold and
+/// waits for a second member before the treasury moves money.
+model FundingRequest {
+  id             String               @id @default(cuid())
+  organizationId String               @map("organization_id")
+  campaignId     String               @map("campaign_id")
+  amountMinor    BigInt               @map("amount_minor")
+  status         FundingRequestStatus @default(PENDING)
+  requestedById  String               @map("requested_by")
+  decidedById    String?              @map("decided_by")
+  decidedAt      DateTime?            @map("decided_at") @db.Timestamptz(3)
+  failureReason  String?              @map("failure_reason") @db.Text
+  createdAt      DateTime             @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt      DateTime             @updatedAt @map("updated_at") @db.Timestamptz(3)
+  organization   Organization         @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  campaign       Campaign             @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  requestedBy    User                 @relation("FundingRequester", fields: [requestedById], references: [id], onDelete: Restrict)
+  decidedBy      User?                @relation("FundingDecider", fields: [decidedById], references: [id], onDelete: Restrict)
+
+  @@index([organizationId, status])
+  @@index([campaignId])
+  @@map("funding_requests")
+}
+
+/// One run of the confidential placement-verification workflow.
+model VerificationRun {
+  id           String                @id @default(cuid())
+  placementId  String                @map("placement_id")
+  status       VerificationRunStatus @default(QUEUED)
+  /// "cre-simulate" (started by the app through the CRE CLI) or
+  /// "cre-external" (verdict from a deployed workflow or a manual CLI run).
+  mode         String                @db.VarChar(24)
+  approved     Boolean?
+  reasons      String[]
+  evidenceHash String?               @map("evidence_hash") @db.VarChar(66)
+  txHash       String?               @map("tx_hash") @db.VarChar(66)
+  log          String?               @db.Text
+  startedAt    DateTime?             @map("started_at") @db.Timestamptz(3)
+  finishedAt   DateTime?             @map("finished_at") @db.Timestamptz(3)
+  createdAt    DateTime              @default(now()) @map("created_at") @db.Timestamptz(3)
+  placement    Placement             @relation(fields: [placementId], references: [id], onDelete: Cascade)
+
+  @@index([placementId, createdAt(sort: Desc)])
+  @@map("verification_runs")
 }

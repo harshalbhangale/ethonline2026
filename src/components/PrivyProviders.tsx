@@ -27,9 +27,16 @@ export default function PrivyProviders({ children }: { children: ReactNode }) {
     <PrivyProvider
       appId={appId}
       config={{
+        // Fewer login methods and no WalletConnect keep Privy's startup light:
+        // WalletConnect alone added ~0.8 s of network calls to every page load.
+        loginMethods: ["email", "google", "wallet"],
         appearance: {
           theme: "dark",
           walletChainType: "ethereum-only",
+          walletList: ["detected_wallets", "metamask", "coinbase_wallet"],
+        },
+        externalWallets: {
+          walletConnect: { enabled: false },
         },
         embeddedWallets: {
           ethereum: {

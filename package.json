@@ -16,7 +16,10 @@
     "db:migrate": "prisma migrate dev",
     "db:seed": "prisma db seed",
     "db:deploy": "prisma migrate deploy",
-    "db:studio": "prisma studio"
+    "db:studio": "prisma studio",
+    "contracts:test": "cd contracts && forge test",
+    "cre:test": "cd cre/placement-verifier && bun test",
+    "e2e:sepolia": "node scripts/run-ts.cjs scripts/e2e-sepolia.ts"
   },
   "dependencies": {
     "@mapbox/search-js-react": "1.6.0",
@@ -34,6 +37,7 @@
     "react-dom": "19.0.0",
     "react-map-gl": "8.1.3",
     "sharp": "0.35.4",
+    "viem": "2.56.0",
     "zod": "4.6.1"
   },
   "devDependencies": {

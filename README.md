@@ -4,21 +4,31 @@ StickerBomb turns a brand campaign brief into a persistent, measurable physical 
 
 ## Current scope
 
-Phases 1 and 2 implement the authenticated Brand Portal end to end:
+The Brand Portal runs end to end on Sepolia:
 
 - Privy sign-in and server-side access-token verification
 - Prisma 7 with Supabase Postgres
-- Local-user bootstrap with explicit, separate brand-workspace onboarding
-- A five-step campaign wizard: brief, location, placements, artwork, review
+- A five-step campaign wizard in a popup: brief, location, placements, artwork, review
 - An animated Mapbox globe that flies into the chosen city
 - Approved-location inventory with live availability, radius and capacity checks
 - A deterministic, versioned quote engine
-- Simulated funding, then one uniquely coded printable poster per placement
+- **An organization treasury**: a Privy server wallet per brand, constrained by a
+  Privy policy, with a second-approver threshold for large fundings
+- **Real funding**: the treasury deposits the quote into `CampaignEscrow` on Sepolia
+- One uniquely coded printable poster per placement, registered in escrow with
+  reserved installer, verifier and cleanup rewards
+- Jobs, placements and an independent-verifier rule (installer ≠ verifier)
+- **Chainlink CRE confidential verification**: a TEE workflow checks both proofs
+  and reports the verdict onchain; the escrow then pays the workers
 - A public QR redirect with privacy-safe, per-asset scan attribution
 
-Later phases add the Worker PWA, private evidence, World verification, Chainlink CRE and real onchain escrow.
+How it fits together, contract addresses, how Privy enables the product and what
+the CRE workflow keeps confidential: **[docs/onchain-brand-flow.md](docs/onchain-brand-flow.md)**.
 
-**Funding is simulated.** `POST /api/campaigns/:id/fund` moves no money. It approves the quote, claims approved surfaces and generates assets so the rest of the pipeline can be built and demonstrated. Onchain escrow replaces it in Phase 4.
+The Worker PWA is not built yet. Until it is, development-only **demo controls**
+(`NEXT_PUBLIC_DEMO_MODE=true`) step each placement through installation,
+independent verification and confidential verification with two prepared demo
+workers, using the same job rules, escrow calls and CRE workflow.
 
 ## Requirements
 
@@ -86,10 +96,10 @@ Later phases add the Worker PWA, private evidence, World verification, Chainlink
 | --- | --- |
 | `/` | Application entry, membership resolution and brand onboarding |
 | `/brand` | Campaign dashboard |
-| `/brand/new` | Full-screen five-step campaign wizard |
-| `/brand/campaigns/[id]` | Campaign details and draft editing |
-| `/brand/placements` | Placement tracking (Phase 3) |
-| `/brand/payments` | Funding and payouts (Phase 4) |
+| `/brand/new` | Five-step campaign wizard, opened as a popup over the dashboard |
+| `/brand/campaigns/[id]` | Campaign details, escrow balances and placement progress |
+| `/brand/placements` | Placement tracking across all campaigns |
+| `/brand/payments` | Treasury: Privy wallet, policy, approvals and onchain activity |
 | `/brand/analytics` | Live per-asset scan attribution |
 | `/worker` | Worker Portal placeholder (Phase 3) |
 | `/s/[code]` | Public QR redirect and scan attribution |
@@ -106,7 +116,17 @@ Later phases add the Worker PWA, private evidence, World verification, Chainlink
 | `/api/campaigns/[id]/locations` | Read and replace the assigned locations |
 | `/api/campaigns/[id]/quote` | Read or recompute the deterministic quote |
 | `/api/campaigns/[id]/quote/approve` | Approve the current quote |
-| `/api/campaigns/[id]/fund` | Simulated funding, then asset generation |
+| `/api/campaigns/[id]/fund` | Fund from the Privy treasury into escrow, then issue assets |
+| `/api/campaigns/[id]/escrow` | Live escrow balances (GET) and chain sync (POST) |
+| `/api/campaigns/[id]/placements` | Placement progress for one campaign |
+| `/api/campaigns/[id]/demo` | Development-only demo controls |
+| `/api/treasury` | Treasury wallet, policy, balances and history |
+| `/api/treasury/top-up` | Testnet only: mint demo tUSDC into the treasury |
+| `/api/treasury/settings` | Second-approver threshold |
+| `/api/funding-requests/[id]/approve` | A second member approves and the treasury funds |
+| `/api/jobs/nearby`, `/api/jobs/[id]/accept`, `/api/jobs/[id]/start` | Worker job APIs |
+| `/api/cre/placements/[id]/evidence` | Exact evidence for the CRE enclave only (secret-authenticated) |
+| `/api/cre/placements/[id]/verdict` | Verdict callback from the CRE workflow |
 | `/api/campaigns/[id]/assets` | List generated assets |
 | `/api/campaigns/[id]/assets/generate` | Generate one coded poster per placement |
 | `/api/campaigns/[id]/assets/[code]/image` | Render a printable poster |
@@ -126,6 +146,9 @@ npm run db:migrate
 npm run db:seed
 npm run db:deploy
 npm run db:studio
+npm run contracts:test   # Foundry tests for CampaignEscrow
+npm run cre:test         # Bun tests for the confidential checks
+npm run e2e:sepolia      # full treasury → escrow → CRE → payout run on Sepolia
 ```
 
 Development runs on Turbopack: it starts in roughly half the time and compiles

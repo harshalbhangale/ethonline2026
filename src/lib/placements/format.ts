@@ -44,6 +44,35 @@ export const placementSteps = [
   "Removed",
 ] as const;
 
+/** Label of the next demo-control step for a placement, if any. */
+export const demoStepLabels: Partial<Record<PlacementStatusValue, string>> = {
+  AWAITING_INSTALL: "Send demo installer",
+  INSTALLING: "Submit installer proof",
+  AWAITING_VERIFIER: "Send independent verifier",
+  VERIFYING: "Submit verifier proof",
+  READY_FOR_FINAL_VERIFICATION: "Run confidential verification",
+  NEEDS_RECAPTURE: "Recapture proof",
+};
+
+const reasonLabels: Record<string, string> = {
+  OUTSIDE_GEOFENCE: "captured outside the approved area",
+  WRONG_QR: "scanned the wrong QR code",
+  CHALLENGE_EXPIRED: "missed the challenge window",
+  CHALLENGE_MISMATCH: "did not match the challenge",
+  DUPLICATE_MEDIA: "reused media",
+  SELF_VERIFICATION: "installer and verifier were the same person",
+  MISSING_INSTALLATION: "installer proof missing",
+  MISSING_VERIFICATION: "verifier proof missing",
+};
+
+/** Turns a CRE reason code such as "INSTALLER:OUTSIDE_GEOFENCE" into words. */
+export function describeReason(reason: string) {
+  const [role, code] = reason.includes(":") ? reason.split(":") : [null, reason];
+  const text = reasonLabels[code] ?? code.toLowerCase().replace(/_/g, " ");
+  if (!role) return text.charAt(0).toUpperCase() + text.slice(1);
+  return `${role === "INSTALLER" ? "Installer" : "Verifier"} ${text}`;
+}
+
 /** How many of `placementSteps` a placement has completed. */
 export const placementStepsDone: Record<PlacementStatusValue, number> = {
   AWAITING_INSTALL: 0,

@@ -10,3 +10,14 @@ next-env.d.ts
 *.tsbuildinfo
 # Generated code-review artifacts, not source
 semantic-review/
+
+# Local CRE CLI source checkout (built locally, not part of the app)
+/cre-cli/
+# Per-run CRE simulator configs written by the app
+/cre/.runs/
+# CRE workflow build output
+.cre_build_tmp.js
+/cre/**/dist/
+*.wasm
+# Separate Next.js build directories (NEXT_DIST_DIR)
+/.next-*/

@@ -21,11 +21,16 @@ function createPrismaClient() {
 
   const adapter = new PrismaPg({
     connectionString,
-    max: 5,
+    max: 8,
     connectionTimeoutMillis: 10_000,
   });
 
-  return new PrismaClient({ adapter });
+  // The database may be a continent away. Prisma's 2 s default for acquiring a
+  // transaction connection fails under ordinary load at that latency.
+  return new PrismaClient({
+    adapter,
+    transactionOptions: { maxWait: 10_000, timeout: 20_000 },
+  });
 }
 
 /**

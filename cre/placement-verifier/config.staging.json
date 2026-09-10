@@ -1,0 +1,15 @@
+{
+  "evidence_api_url": "http://127.0.0.1:3000/api/cre/placements",
+  "challenge_grace_seconds": 30,
+  "secrets_ids": {
+    "evidence_api_key_id": "evidence_api_key",
+    "geofence_salt_id": "geofence_salt"
+  },
+  "evms": [
+    {
+      "chain_selector_name": "ethereum-testnet-sepolia",
+      "consumer_address": "0xF422ddFE8153d625B0724d5116eb73C75EF918d0",
+      "gas_limit": "500000"
+    }
+  ]
+}
