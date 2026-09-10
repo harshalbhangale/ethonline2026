@@ -1,0 +1,304 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum OrganizationRole {
+  BRAND
+  WORKER
+  OPERATOR
+}
+
+enum CampaignStatus {
+  DRAFT
+  QUOTED
+  FUNDED
+  ASSETS_READY
+  DEPLOYING
+  VERIFYING
+  LIVE
+  EXPIRED
+  REMOVING
+  COMPLETE
+  CANCELLED
+  DISPUTED
+}
+
+enum CampaignWizardStep {
+  BRIEF
+  LOCATION
+  PLACEMENTS
+  CREATIVE
+  REVIEW
+}
+
+enum LocationStrategy {
+  AUTO_APPROVED
+  MANUAL_SELECTION
+}
+
+enum LocationPermissionStatus {
+  PENDING
+  APPROVED
+  REVOKED
+}
+
+enum CampaignLocationSource {
+  BRAND
+  SYSTEM
+}
+
+enum QuoteStatus {
+  DRAFT
+  APPROVED
+  SUPERSEDED
+}
+
+enum QuoteLineItemKind {
+  PRINTING
+  INSTALLATION
+  VERIFICATION
+  CLEANUP_RESERVE
+  PLATFORM_FEE
+  CONTINGENCY
+}
+
+enum CampaignAssetStatus {
+  PENDING
+  GENERATING
+  READY
+  DISABLED
+}
+
+model User {
+  id                   String               @id @default(cuid())
+  privyUserId          String               @unique @map("privy_user_id") @db.VarChar(255)
+  walletAddress        String?              @map("wallet_address") @db.VarChar(64)
+  createdAt            DateTime             @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt            DateTime             @updatedAt @map("updated_at") @db.Timestamptz(3)
+  memberships          OrganizationMember[]
+  createdOrganizations Organization[]       @relation("OrganizationCreator")
+  campaignsCreated     Campaign[]           @relation("CampaignCreator")
+
+  @@map("users")
+}
+
+model Organization {
+  id          String               @id @default(cuid())
+  name        String               @db.VarChar(120)
+  slug        String               @unique @db.VarChar(160)
+  createdById String               @map("created_by")
+  createdAt   DateTime             @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt   DateTime             @updatedAt @map("updated_at") @db.Timestamptz(3)
+  creator     User                 @relation("OrganizationCreator", fields: [createdById], references: [id], onDelete: Restrict)
+  members     OrganizationMember[]
+  campaigns   Campaign[]
+
+  @@index([createdById])
+  @@map("organizations")
+}
+
+model OrganizationMember {
+  organizationId String           @map("organization_id")
+  userId         String           @map("user_id")
+  role           OrganizationRole
+  createdAt      DateTime         @default(now()) @map("created_at") @db.Timestamptz(3)
+  organization   Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user           User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([organizationId, userId])
+  @@index([userId])
+  @@map("organization_members")
+}
+
+/// A permissioned physical surface StickerBomb is allowed to use.
+/// Exact points are assigned by the system, never chosen by the brand.
+model Location {
+  id                    String                   @id @default(cuid())
+  slug                  String                   @unique @db.VarChar(160)
+  venueName             String                   @map("venue_name") @db.VarChar(160)
+  countryCode           String                   @map("country_code") @db.VarChar(2)
+  countryName           String                   @map("country_name") @db.VarChar(120)
+  city                  String                   @db.VarChar(160)
+  latitude              Float
+  longitude             Float
+  surfacePhotoUrl       String?                  @map("surface_photo_url") @db.Text
+  placementInstructions String                   @map("placement_instructions") @db.Text
+  permissionStatus      LocationPermissionStatus @default(PENDING) @map("permission_status")
+  maxActiveCampaigns    Int                      @default(1) @map("max_active_campaigns")
+  createdAt             DateTime                 @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt             DateTime                 @updatedAt @map("updated_at") @db.Timestamptz(3)
+  campaignLocations     CampaignLocation[]
+  assets                CampaignAsset[]
+
+  @@index([countryCode, city])
+  @@index([permissionStatus])
+  @@map("locations")
+}
+
+model Campaign {
+  id               String              @id @default(cuid())
+  organizationId   String              @map("organization_id")
+  name             String              @db.VarChar(160)
+  briefText        String              @map("brief_text") @db.Text
+  status           CampaignStatus      @default(DRAFT)
+  wizardStep       CampaignWizardStep  @default(BRIEF) @map("wizard_step")
+  currency         String              @default("USD") @db.VarChar(12)
+
+  // Draft-completable fields. Nullable so the wizard can save after every step;
+  // completeness is enforced at the DRAFT -> QUOTED transition, not by the database.
+  placementCount   Int?                @map("placement_count")
+  budgetLimitMinor BigInt?             @map("budget_limit_minor")
+  destinationUrl   String?             @map("destination_url") @db.Text
+  deadline         DateTime?           @db.Timestamptz(3)
+
+  // Structured geography. `areaLabel` is a generated human label and is never
+  // read as source of truth.
+  areaLabel        String?             @map("area_label") @db.VarChar(240)
+  countryCode      String?             @map("country_code") @db.VarChar(2)
+  countryName      String?             @map("country_name") @db.VarChar(120)
+  city             String?             @db.VarChar(160)
+  centerLatitude   Float?              @map("center_latitude")
+  centerLongitude  Float?              @map("center_longitude")
+  radiusMeters     Int?                @map("radius_meters")
+  locationStrategy LocationStrategy?   @map("location_strategy")
+
+  artworkUrl       String?             @map("artwork_url") @db.Text
+  artworkHash      String?             @map("artwork_hash") @db.VarChar(128)
+
+  /// Set by the Phase 2 mocked funding action. Replaced by onchain escrow in Phase 4.
+  fundedAt         DateTime?           @map("funded_at") @db.Timestamptz(3)
+  fundingReference String?             @map("funding_reference") @db.VarChar(120)
+
+  createdById      String              @map("created_by")
+  createdAt        DateTime            @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt        DateTime            @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  organization     Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  creator          User                @relation("CampaignCreator", fields: [createdById], references: [id], onDelete: Restrict)
+  areas            CampaignArea[]
+  locations        CampaignLocation[]
+  quotes           CampaignQuote[]
+  assets           CampaignAsset[]
+  scanEvents       ScanEvent[]
+
+  @@index([organizationId, updatedAt(sort: Desc)])
+  @@index([createdById])
+  @@index([countryCode, city])
+  @@map("campaigns")
+}
+
+/// One highlighted zone inside a campaign's city.
+///
+/// A campaign may target several neighbourhoods at once. The campaign's own
+/// centre/radius columns mirror the first area so existing completeness checks
+/// and worker dispatch keep a single canonical centre.
+model CampaignArea {
+  id           String   @id @default(cuid())
+  campaignId   String   @map("campaign_id")
+  label        String   @db.VarChar(160)
+  latitude     Float
+  longitude    Float
+  radiusMeters Int      @map("radius_meters")
+  sortOrder    Int      @map("sort_order")
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  campaign     Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+
+  @@unique([campaignId, sortOrder])
+  @@index([campaignId])
+  @@map("campaign_areas")
+}
+
+model CampaignLocation {
+  campaignId String                 @map("campaign_id")
+  locationId String                 @map("location_id")
+  source     CampaignLocationSource
+  createdAt  DateTime               @default(now()) @map("created_at") @db.Timestamptz(3)
+  campaign   Campaign               @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  location   Location               @relation(fields: [locationId], references: [id], onDelete: Restrict)
+
+  @@id([campaignId, locationId])
+  @@index([locationId])
+  @@map("campaign_locations")
+}
+
+model CampaignQuote {
+  id         String                  @id @default(cuid())
+  campaignId String                  @map("campaign_id")
+  version    Int
+  status     QuoteStatus             @default(DRAFT)
+  currency   String                  @default("USD") @db.VarChar(12)
+  totalMinor BigInt                  @map("total_minor")
+  approvedAt DateTime?               @map("approved_at") @db.Timestamptz(3)
+  createdAt  DateTime                @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt  DateTime                @updatedAt @map("updated_at") @db.Timestamptz(3)
+  campaign   Campaign                @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  lineItems  CampaignQuoteLineItem[]
+
+  @@unique([campaignId, version])
+  @@index([campaignId, status])
+  @@map("campaign_quotes")
+}
+
+model CampaignQuoteLineItem {
+  id          String            @id @default(cuid())
+  quoteId     String            @map("quote_id")
+  kind        QuoteLineItemKind
+  label       String            @db.VarChar(120)
+  amountMinor BigInt            @map("amount_minor")
+  sortOrder   Int               @map("sort_order")
+  quote       CampaignQuote     @relation(fields: [quoteId], references: [id], onDelete: Cascade)
+
+  @@unique([quoteId, kind])
+  @@index([quoteId])
+  @@map("campaign_quote_line_items")
+}
+
+model CampaignAsset {
+  id               String              @id @default(cuid())
+  campaignId       String              @map("campaign_id")
+  locationId       String?             @map("location_id")
+  shortCode        String              @unique @map("short_code") @db.VarChar(32)
+  sequence         Int
+  qrPayload        String              @map("qr_payload") @db.Text
+  destinationUrl   String              @map("destination_url") @db.Text
+  artworkHash      String?             @map("artwork_hash") @db.VarChar(128)
+  renderedAssetUrl String?             @map("rendered_asset_url") @db.Text
+  version          Int                 @default(1)
+  status           CampaignAssetStatus @default(PENDING)
+  createdAt        DateTime            @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt        DateTime            @updatedAt @map("updated_at") @db.Timestamptz(3)
+  campaign         Campaign            @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  location         Location?           @relation(fields: [locationId], references: [id], onDelete: SetNull)
+  scanEvents       ScanEvent[]
+
+  @@unique([campaignId, sequence])
+  @@index([campaignId])
+  @@index([locationId])
+  @@map("campaign_assets")
+}
+
+/// Privacy-safe attribution for a public QR scan.
+/// Never stores public visitor identity and never triggers a worker payout.
+model ScanEvent {
+  id             String        @id @default(cuid())
+  assetId        String        @map("asset_id")
+  campaignId     String        @map("campaign_id")
+  referrer       String?       @db.Text
+  userAgentHash  String?       @map("user_agent_hash") @db.VarChar(64)
+  sessionHash    String?       @map("session_hash") @db.VarChar(64)
+  coarseRegion   String?       @map("coarse_region") @db.VarChar(120)
+  isSuspectedBot Boolean       @default(false) @map("is_suspected_bot")
+  createdAt      DateTime      @default(now()) @map("created_at") @db.Timestamptz(3)
+  asset          CampaignAsset @relation(fields: [assetId], references: [id], onDelete: Cascade)
+  campaign       Campaign      @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+
+  @@index([campaignId, createdAt(sort: Desc)])
+  @@index([assetId, createdAt(sort: Desc)])
+  @@index([sessionHash])
+  @@map("scan_events")
+}

@@ -1,6 +1,5 @@
 import type { Metadata } from "next";
 import { Plus_Jakarta_Sans } from "next/font/google";
-import AppShell from "@/components/AppShell";
 import PrivyProviders from "@/components/PrivyProviders";
 import "./globals.css";
 
@@ -28,9 +27,7 @@ export default function RootLayout({
         <script dangerouslySetInnerHTML={{ __html: themeScript }} />
       </head>
       <body className={`${jakarta.variable} font-sans antialiased`}>
-        <PrivyProviders>
-          <AppShell>{children}</AppShell>
-        </PrivyProviders>
+        <PrivyProviders>{children}</PrivyProviders>
       </body>
     </html>
   );
