@@ -1,7 +1,12 @@
 node_modules
 .next
+.next-*
 out
 .env*
+!.env.example
+/src/generated/prisma
 .DS_Store
 next-env.d.ts
 *.tsbuildinfo
+# Generated code-review artifacts, not source
+semantic-review/
