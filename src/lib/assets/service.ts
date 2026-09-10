@@ -11,6 +11,7 @@ import type { CampaignAssetDto } from "@/lib/assets/types";
 import type { BrandContext } from "@/lib/auth/require-brand";
 import { getPrismaClient } from "@/lib/database/prisma";
 import { ApiError } from "@/lib/http/api-error";
+import { openInstallationJobs } from "@/lib/placements/service";
 
 type AssetWithLocation = CampaignAsset & { location: Location | null };
 
@@ -106,6 +107,8 @@ export async function generateCampaignAssets(
   });
 
   if (existing.length > 0) {
+    // Also repairs a campaign whose earlier generation stopped before jobs opened.
+    await openInstallationJobs(campaignId);
     return existing.map(toAssetDto);
   }
 
@@ -160,6 +163,8 @@ export async function generateCampaignAssets(
       data: { status: CampaignStatus.ASSETS_READY },
     });
   }
+
+  await openInstallationJobs(campaignId);
 
   return created.map(toAssetDto);
 }

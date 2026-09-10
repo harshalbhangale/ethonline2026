@@ -1,5 +1,11 @@
 export type OrganizationRoleValue = "BRAND" | "WORKER" | "OPERATOR";
 
+export type SelfieCheckStatusValue =
+  | "NOT_STARTED"
+  | "PENDING"
+  | "VERIFIED"
+  | "FAILED";
+
 export type MeResponse = {
   user: {
     id: string;
@@ -10,4 +16,8 @@ export type MeResponse = {
     name: string;
   } | null;
   role: OrganizationRoleValue | null;
+  worker: {
+    displayName: string;
+    selfieCheckStatus: SelfieCheckStatusValue;
+  } | null;
 };

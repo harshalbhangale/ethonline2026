@@ -11,6 +11,7 @@ import {
 } from "react";
 import AuthPrompt from "@/components/AuthPrompt";
 import CampaignStatusBadge from "@/components/campaigns/CampaignStatusBadge";
+import PlacementBoard from "@/components/placements/PlacementBoard";
 import { Card } from "@/components/ui";
 import {
   authenticatedFetch,
@@ -391,11 +392,10 @@ export default function CampaignDetails({ campaignId }: { campaignId: string }) 
         </div>
       </Card>
 
-      <div className="grid gap-4 md:grid-cols-3">
+      <div className="grid gap-4 md:grid-cols-2">
         {[
           ["Quote", "A deterministic campaign quote will appear here in Phase 2."],
           ["QR assets", "Unique printable assets are generated after quote approval."],
-          ["Placements", "Installation and verification progress will be tracked here."],
         ].map(([title, body]) => (
           <Card key={title} className="p-5">
             <div className="flex items-center justify-between gap-3">
@@ -406,6 +406,8 @@ export default function CampaignDetails({ campaignId }: { campaignId: string }) 
           </Card>
         ))}
       </div>
+
+      <PlacementBoard campaignId={campaign.id} funded={campaign.fundedAt !== null} />
 
       <p className="text-[11.5px] text-faint">Created {formatCampaignDate(campaign.createdAt, true)} · Last updated {formatCampaignDate(campaign.updatedAt, true)}</p>
     </div>

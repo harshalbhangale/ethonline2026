@@ -74,6 +74,52 @@ enum CampaignAssetStatus {
   DISABLED
 }
 
+enum JobRole {
+  INSTALLER
+  VERIFIER
+  CLEANUP
+}
+
+enum JobStatus {
+  OPEN
+  RESERVED
+  ACCEPTED
+  IN_PROGRESS
+  PROOF_SUBMITTED
+  ACCEPTED_PROOF
+  REJECTED_PROOF
+  PAID
+  CANCELLED
+  EXPIRED
+}
+
+enum PlacementStatus {
+  AWAITING_INSTALL
+  INSTALLING
+  INSTALL_SUBMITTED
+  AWAITING_VERIFIER
+  VERIFYING
+  READY_FOR_FINAL_VERIFICATION
+  VERIFIED
+  NEEDS_RECAPTURE
+  REMOVING
+  REMOVED
+  CANCELLED
+}
+
+enum SelfieCheckStatus {
+  NOT_STARTED
+  PENDING
+  VERIFIED
+  FAILED
+}
+
+enum WorkerRiskStatus {
+  CLEAR
+  REVIEW
+  BLOCKED
+}
+
 model User {
   id                   String               @id @default(cuid())
   privyUserId          String               @unique @map("privy_user_id") @db.VarChar(255)
@@ -83,6 +129,10 @@ model User {
   memberships          OrganizationMember[]
   createdOrganizations Organization[]       @relation("OrganizationCreator")
   campaignsCreated     Campaign[]           @relation("CampaignCreator")
+  installedPlacements  Placement[]          @relation("PlacementInstaller")
+  verifiedPlacements   Placement[]          @relation("PlacementVerifier")
+  jobs                 Job[]                @relation("JobWorker")
+  workerProfile        WorkerProfile?
 
   @@map("users")
 }
@@ -134,6 +184,7 @@ model Location {
   updatedAt             DateTime                 @updatedAt @map("updated_at") @db.Timestamptz(3)
   campaignLocations     CampaignLocation[]
   assets                CampaignAsset[]
+  placements            Placement[]
 
   @@index([countryCode, city])
   @@index([permissionStatus])
@@ -185,6 +236,8 @@ model Campaign {
   quotes           CampaignQuote[]
   assets           CampaignAsset[]
   scanEvents       ScanEvent[]
+  placements       Placement[]
+  jobs             Job[]
 
   @@index([organizationId, updatedAt(sort: Desc)])
   @@index([createdById])
@@ -275,6 +328,7 @@ model CampaignAsset {
   campaign         Campaign            @relation(fields: [campaignId], references: [id], onDelete: Cascade)
   location         Location?           @relation(fields: [locationId], references: [id], onDelete: SetNull)
   scanEvents       ScanEvent[]
+  placement        Placement?
 
   @@unique([campaignId, sequence])
   @@index([campaignId])
@@ -301,4 +355,84 @@ model ScanEvent {
   @@index([assetId, createdAt(sort: Desc)])
   @@index([sessionHash])
   @@map("scan_events")
+}
+
+/// One physical asset at one approved location, from installation to removal.
+///
+/// The installer and verifier must be different people. That rule is enforced
+/// by the job service and by a CHECK constraint in the migration.
+model Placement {
+  id                 String          @id @default(cuid())
+  campaignId         String          @map("campaign_id")
+  assetId            String          @unique @map("asset_id")
+  locationId         String          @map("location_id")
+  status             PlacementStatus @default(AWAITING_INSTALL)
+  installerUserId    String?         @map("installer_user_id")
+  verifierUserId     String?         @map("verifier_user_id")
+  /// Set in Phase 4 when the placement is registered with CampaignEscrow.
+  onchainPlacementId String?         @map("onchain_placement_id") @db.VarChar(80)
+  installedAt        DateTime?       @map("installed_at") @db.Timestamptz(3)
+  verifiedAt         DateTime?       @map("verified_at") @db.Timestamptz(3)
+  removedAt          DateTime?       @map("removed_at") @db.Timestamptz(3)
+  createdAt          DateTime        @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt          DateTime        @updatedAt @map("updated_at") @db.Timestamptz(3)
+  campaign           Campaign        @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  asset              CampaignAsset   @relation(fields: [assetId], references: [id], onDelete: Cascade)
+  location           Location        @relation(fields: [locationId], references: [id], onDelete: Restrict)
+  installer          User?           @relation("PlacementInstaller", fields: [installerUserId], references: [id], onDelete: Restrict)
+  verifier           User?           @relation("PlacementVerifier", fields: [verifierUserId], references: [id], onDelete: Restrict)
+  jobs               Job[]
+
+  @@index([campaignId])
+  @@index([locationId])
+  @@index([status])
+  @@map("placements")
+}
+
+/// Paid physical work on a placement. At most one job per role per placement;
+/// a rejected proof is recaptured on the same job rather than opening another.
+model Job {
+  id            String    @id @default(cuid())
+  placementId   String    @map("placement_id")
+  campaignId    String    @map("campaign_id")
+  role          JobRole
+  status        JobStatus @default(OPEN)
+  rewardMinor   BigInt    @map("reward_minor")
+  currency      String    @default("USD") @db.VarChar(12)
+  workerUserId  String?   @map("worker_user_id")
+  reservedUntil DateTime? @map("reserved_until") @db.Timestamptz(3)
+  acceptedAt    DateTime? @map("accepted_at") @db.Timestamptz(3)
+  startedAt     DateTime? @map("started_at") @db.Timestamptz(3)
+  submittedAt   DateTime? @map("submitted_at") @db.Timestamptz(3)
+  resolvedAt    DateTime? @map("resolved_at") @db.Timestamptz(3)
+  paidAt        DateTime? @map("paid_at") @db.Timestamptz(3)
+  expiresAt     DateTime? @map("expires_at") @db.Timestamptz(3)
+  createdAt     DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt     DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
+  placement     Placement @relation(fields: [placementId], references: [id], onDelete: Cascade)
+  campaign      Campaign  @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  worker        User?     @relation("JobWorker", fields: [workerUserId], references: [id], onDelete: Restrict)
+
+  @@unique([placementId, role])
+  @@index([campaignId])
+  @@index([status, role])
+  @@index([workerUserId, status])
+  @@map("jobs")
+}
+
+/// A person who can take paid physical work. Created by worker onboarding.
+/// World Selfie Check (Phase 4) sets `selfieCheckStatus`; until then it is
+/// recorded but not enforced.
+model WorkerProfile {
+  id                String            @id @default(cuid())
+  userId            String            @unique @map("user_id")
+  displayName       String            @map("display_name") @db.VarChar(80)
+  selfieCheckStatus SelfieCheckStatus @default(NOT_STARTED) @map("selfie_check_status")
+  riskStatus        WorkerRiskStatus  @default(CLEAR) @map("risk_status")
+  completedJobs     Int               @default(0) @map("completed_jobs")
+  createdAt         DateTime          @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt         DateTime          @updatedAt @map("updated_at") @db.Timestamptz(3)
+  user              User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("worker_profiles")
 }
