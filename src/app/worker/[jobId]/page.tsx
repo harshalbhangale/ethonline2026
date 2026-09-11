@@ -6,7 +6,7 @@ import { use, useEffect, useRef, useState } from "react";
 import LivePresencePanel, {
   useLivePresence,
 } from "@/components/worker/LivePresence";
-import MiniMap from "@/components/worker/MiniMap";
+import VenueMap from "@/components/worker/VenueMap";
 import PosterCodeField from "@/components/worker/PosterCodeField";
 import SpotPhoto from "@/components/worker/SpotPhoto";
 import { useWorker } from "@/components/worker/WorkerStore";
@@ -235,7 +235,10 @@ export default function JobDetail({
   return (
     <>
       <button
-        onClick={() => router.back()}
+        // Not router.back(): this page is also reached from a push
+        // notification or the pinned active-job bar, where there is no app
+        // history to go back to and this would leave the app entirely.
+        onClick={() => router.push("/worker/tasks")}
         className="mb-4 flex items-center gap-1.5 text-[14px] text-[var(--muted)]"
       >
         <svg viewBox="0 0 24 24" fill="none" className="h-4 w-4">
@@ -268,13 +271,15 @@ export default function JobDetail({
       </div>
 
       <div className="mt-5">
-        <MiniMap
+        <VenueMap
           lat={job.latitude}
           lng={job.longitude}
           label={
             job.placementInstructions ??
             `${job.venueName} · exact spot after you accept`
           }
+          radiusMeters={owesProof ? job.geofenceRadiusMeters : undefined}
+          fix={owesProof ? presence.fix : null}
         />
       </div>
 

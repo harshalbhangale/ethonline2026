@@ -408,7 +408,13 @@ export default function CampaignWizard() {
     );
   }
 
-  const back = previousStep(step);
+  // LOCATION and PLACEMENTS both render WhereStep, mounted once for the
+  // whole "Where it runs" stage — going from PLACEMENTS to LOCATION doesn't
+  // remount it, so its own internal phase (picking a city vs. drawing an
+  // area) never resets, and this button would silently do nothing. WhereStep
+  // has its own "Change city" for that; this button skips straight past it
+  // to the previous stage, matching what "Step 2 of 4" already implies.
+  const back = step === "PLACEMENTS" ? previousStep("LOCATION") : previousStep(step);
   const summary = campaign ? (
     <span className="flex flex-wrap gap-x-4 gap-y-1">
       <span className="font-semibold text-ink">{campaign.name}</span>
