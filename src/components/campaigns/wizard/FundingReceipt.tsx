@@ -189,7 +189,7 @@ export default function FundingReceipt({
               animate={{ opacity: 1, y: 0 }}
               transition={{ type: "spring", stiffness: 300, damping: 26, delay: 0.1 }}
               whileTap={{ scale: 0.97 }}
-              className="-mt-6 flex h-11 items-center gap-2 rounded-xl bg-solid px-5 text-[14px] font-semibold text-solid-ink shadow-xl"
+              className="mt-6 flex h-11 items-center gap-2 rounded-xl bg-solid px-5 text-[14px] font-semibold text-solid-ink shadow-xl"
             >
               View campaign
               <ArrowRightIcon aria-hidden size={15} weight="bold" />
