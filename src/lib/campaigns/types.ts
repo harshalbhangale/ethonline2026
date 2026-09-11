@@ -32,6 +32,54 @@ export const locationStrategies = [
 
 export type LocationStrategyValue = (typeof locationStrategies)[number];
 
+export const assetTypes = [
+  "QR_NORMAL",
+  "QR_MAGIC",
+  "QR_VERY_MAGIC",
+  "NFC",
+] as const;
+
+export type AssetTypeValue = (typeof assetTypes)[number];
+
+/** Presentation for each asset tier in the wizard. `priceLabel` is derived from
+ * the multiplier in `pricing.ts`; keep the two in sync. */
+export const assetTypeOptions: {
+  value: AssetTypeValue;
+  emoji: string;
+  label: string;
+  description: string;
+  priceLabel: string;
+}[] = [
+  {
+    value: "QR_NORMAL",
+    emoji: "💣",
+    label: "Normal QR",
+    description: "A plain printed QR code. Boring, but it works.",
+    priceLabel: "1×",
+  },
+  {
+    value: "QR_MAGIC",
+    emoji: "💣",
+    label: "Magic QR",
+    description: "A branded QR that blends into your artwork.",
+    priceLabel: "1×",
+  },
+  {
+    value: "QR_VERY_MAGIC",
+    emoji: "💣",
+    label: "Very Magic QR",
+    description: "A premium, high-craft coded asset.",
+    priceLabel: "2×",
+  },
+  {
+    value: "NFC",
+    emoji: "💣",
+    label: "NFC",
+    description: "A tap-to-open NFC tag alongside the code.",
+    priceLabel: "4×",
+  },
+];
+
 /**
  * A campaign as seen by the browser.
  *
@@ -52,6 +100,7 @@ export type CampaignDto = {
   budgetLimit: string | null;
   destinationUrl: string | null;
   deadline: string | null;
+  assetType: AssetTypeValue;
 
   areaLabel: string | null;
   countryCode: string | null;

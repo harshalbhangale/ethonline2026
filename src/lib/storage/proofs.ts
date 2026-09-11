@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
-import { createClient } from "@supabase/supabase-js";
 import { ApiError } from "@/lib/http/api-error";
+import { getStorageClient, imageExtensions } from "@/lib/storage/client";
 
 /**
  * sha256 of a stored proof, or null if it is not there. Proves the upload
@@ -17,26 +17,8 @@ export async function hashProofObject(path: string) {
 const bucket = "proofs";
 const viewWindowSeconds = 300;
 
-function getClient() {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL?.trim();
-  const key = process.env.SUPABASE_SERVICE_ROLE_KEY?.trim();
-
-  if (!url || !key) {
-    throw new ApiError(
-      500,
-      "STORAGE_NOT_CONFIGURED",
-      "Proof storage is not configured.",
-    );
-  }
-
-  return createClient(url, key, { auth: { persistSession: false } });
-}
-
-const extensions: Record<string, string> = {
-  "image/jpeg": "jpg",
-  "image/png": "png",
-  "image/webp": "webp",
-};
+const getClient = getStorageClient;
+const extensions = imageExtensions;
 
 export function isAllowedProofType(contentType: string) {
   return contentType in extensions;

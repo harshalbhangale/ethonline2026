@@ -7,6 +7,7 @@ import {
 import { buildScanUrl } from "@/lib/assets/app-url";
 import { renderPosterPng, verifyQrPayload } from "@/lib/assets/qr";
 import { generateShortCode } from "@/lib/assets/short-code";
+import { downloadArtwork } from "@/lib/storage/artwork";
 import type { CampaignAssetDto } from "@/lib/assets/types";
 import type { BrandContext } from "@/lib/auth/require-brand";
 import { getPrismaClient } from "@/lib/database/prisma";
@@ -116,6 +117,11 @@ export async function generateCampaignAssets(
     a.location.venueName.localeCompare(b.location.venueName),
   );
 
+  // Fetched once for the whole run: every poster in a campaign shares artwork.
+  const artwork = campaign.artworkUrl
+    ? await downloadArtwork(campaign.artworkUrl)
+    : null;
+
   const created: AssetWithLocation[] = [];
 
   for (const [index, assignment] of ordered.entries()) {
@@ -124,11 +130,12 @@ export async function generateCampaignAssets(
 
     // Prove the asset is scannable before it is recorded as ready. A poster
     // that cannot be decoded must never reach a printer.
-    const poster = await renderPosterPng({
+    const { png: poster } = await renderPosterPng({
       payload: qrPayload,
       headline: campaign.name,
       venueName: assignment.location.venueName,
       shortCode,
+      artwork,
     });
     const verification = await verifyQrPayload(poster, qrPayload);
 
@@ -182,7 +189,10 @@ export async function getOwnedAssetByShortCode(
       campaignId,
       campaign: { organizationId: context.organizationId },
     },
-    include: { location: true, campaign: { select: { name: true } } },
+    include: {
+      location: true,
+      campaign: { select: { name: true, artworkUrl: true } },
+    },
   });
 
   if (!asset) {

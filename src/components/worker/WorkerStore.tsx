@@ -6,6 +6,7 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
 } from "react";
@@ -15,11 +16,11 @@ import {
   ClientApiError,
 } from "@/lib/api/authenticated-fetch";
 import type { MeResponse } from "@/lib/auth/types";
-import type { WorkerWalletDto } from "@/lib/jobs/types";
+import type { WorkerPingDto, WorkerWalletDto } from "@/lib/jobs/types";
 import type { Job } from "@/lib/worker-data";
 
-type JobsResponse = { jobs: Job[] };
 type JobResponse = { job: Job };
+type AllJobsResponse = { place: Job[]; check: Job[]; mine: Job[] };
 
 type Store = {
   ready: boolean;
@@ -33,16 +34,26 @@ type Store = {
   jobById: (id: string) => Job | undefined;
   loadJob: (id: string) => Promise<Job>;
   acceptPlace: (id: string) => Promise<Job>;
-  submitProof: (
-    id: string,
-    proof: { photo: File; latitude?: number; longitude?: number },
-  ) => Promise<Job>;
+  submitProof: (id: string, proof: PhotoProofInput) => Promise<Job>;
   acceptCheck: (id: string) => Promise<Job>;
-  confirmPlacement: (
-    id: string,
-    proof: { photo: File; latitude?: number; longitude?: number },
-  ) => Promise<Job>;
+  confirmPlacement: (id: string, proof: PhotoProofInput) => Promise<Job>;
   rejectPlacement: (id: string) => Promise<Job>;
+  /** Shares one live position while the worker holds the job. */
+  ping: (id: string, fix: PingInput) => Promise<WorkerPingDto>;
+};
+
+type PhotoProofInput = {
+  photo: File;
+  latitude?: number;
+  longitude?: number;
+  accuracyMeters?: number;
+  scannedShortCode?: string;
+};
+
+type PingInput = {
+  latitude: number;
+  longitude: number;
+  accuracyMeters?: number;
 };
 
 const WorkerContext = createContext<Store | null>(null);
@@ -74,8 +85,14 @@ export function WorkerProvider({ children }: { children: ReactNode }) {
   const [wallet, setWallet] = useState<WorkerWalletDto | null>(null);
   const [jobs, setJobs] = useState<Job[]>([]);
 
+  // The profile is created once per session, not re-checked on every refresh.
+  const profileChecked = useRef(false);
+
   const ensureWorkerProfile = useCallback(async () => {
+    if (profileChecked.current) return;
+
     const me = await authenticatedFetch<MeResponse>(getAccessToken, "/api/me");
+    profileChecked.current = true;
 
     if (me.worker) return;
 
@@ -90,15 +107,10 @@ export function WorkerProvider({ children }: { children: ReactNode }) {
 
     try {
       await ensureWorkerProfile();
-      const [place, check, mine, nextWallet] = await Promise.all([
-        authenticatedFetch<JobsResponse>(getAccessToken, "/api/worker/jobs"),
-        authenticatedFetch<JobsResponse>(
+      const [lists, nextWallet] = await Promise.all([
+        authenticatedFetch<AllJobsResponse>(
           getAccessToken,
-          "/api/worker/jobs?tab=check",
-        ),
-        authenticatedFetch<JobsResponse>(
-          getAccessToken,
-          "/api/worker/jobs?tab=mine",
+          "/api/worker/jobs?tab=all",
         ),
         authenticatedFetch<WorkerWalletDto>(
           getAccessToken,
@@ -106,11 +118,11 @@ export function WorkerProvider({ children }: { children: ReactNode }) {
         ),
       ]);
 
-      setPlaceJobs(place.jobs);
-      setCheckJobs(check.jobs);
-      setMyTasks(mine.jobs);
+      setPlaceJobs(lists.place);
+      setCheckJobs(lists.check);
+      setMyTasks(lists.mine);
       setWallet(nextWallet);
-      setJobs(mergeJobs(place.jobs, check.jobs, mine.jobs));
+      setJobs(mergeJobs(lists.place, lists.check, lists.mine));
     } catch (caught) {
       setError(errorMessage(caught));
     } finally {
@@ -152,7 +164,11 @@ export function WorkerProvider({ children }: { children: ReactNode }) {
         },
       );
 
-      await refresh();
+      // The response already carries the updated job, so the screen can settle
+      // immediately. The lists catch up in the background rather than making
+      // the worker wait for them.
+      setJobs((current) => mergeJobs(current, [response.job]));
+      void refresh();
       return response.job;
     },
     [getAccessToken, refresh],
@@ -188,38 +204,48 @@ export function WorkerProvider({ children }: { children: ReactNode }) {
     [getAccessToken],
   );
 
-  const submitProof = useCallback(
-    async (
-      id: string,
-      proof: { photo: File; latitude?: number; longitude?: number },
-    ) => {
+  const submitPhotoProof = useCallback(
+    async (id: string, action: string, proof: PhotoProofInput) => {
       const photoPath = await uploadPhoto(id, proof.photo);
 
-      return runAction(id, "submit-proof", {
+      return runAction(id, action, {
         photoPath,
         latitude: proof.latitude,
         longitude: proof.longitude,
+        accuracyMeters: proof.accuracyMeters,
+        scannedShortCode: proof.scannedShortCode,
       });
     },
     [runAction, uploadPhoto],
   );
 
+  const submitProof = useCallback(
+    (id: string, proof: PhotoProofInput) =>
+      submitPhotoProof(id, "submit-proof", proof),
+    [submitPhotoProof],
+  );
+
   // The checker's own photo and location are independent proof: the
   // confidential check compares both before the escrow pays anyone.
   const confirmPlacement = useCallback(
-    async (
-      id: string,
-      proof: { photo: File; latitude?: number; longitude?: number },
-    ) => {
-      const photoPath = await uploadPhoto(id, proof.photo);
+    (id: string, proof: PhotoProofInput) =>
+      submitPhotoProof(id, "confirm", proof),
+    [submitPhotoProof],
+  );
 
-      return runAction(id, "confirm", {
-        photoPath,
-        latitude: proof.latitude,
-        longitude: proof.longitude,
-      });
-    },
-    [runAction, uploadPhoto],
+  // Deliberately does not refresh the job list: this fires every few seconds.
+  const ping = useCallback(
+    (id: string, fix: PingInput) =>
+      authenticatedFetch<WorkerPingDto>(
+        getAccessToken,
+        `/api/worker/jobs/${id}/ping`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(fix),
+        },
+      ),
+    [getAccessToken],
   );
 
   const value = useMemo<Store>(
@@ -239,6 +265,7 @@ export function WorkerProvider({ children }: { children: ReactNode }) {
       acceptCheck: (id) => runAction(id, "accept-check"),
       confirmPlacement,
       rejectPlacement: (id) => runAction(id, "reject"),
+      ping,
     }),
     [
       ready,
@@ -254,6 +281,7 @@ export function WorkerProvider({ children }: { children: ReactNode }) {
       runAction,
       submitProof,
       confirmPlacement,
+      ping,
     ],
   );
 

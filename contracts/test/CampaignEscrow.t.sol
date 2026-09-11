@@ -90,14 +90,29 @@ contract CampaignEscrowTest is Test {
         escrow.registerPlacement(PLACEMENT, CAMPAIGN, INSTALL, VERIFY, CLEANUP);
     }
 
-    function test_installerCannotBeVerifier() public {
+    function test_selfVerifiedPlacementPaysOneWorkerBothRewards() public {
         vm.prank(brand);
         escrow.fundCampaign(CAMPAIGN, 60e6);
         vm.startPrank(operator);
         escrow.registerPlacement(PLACEMENT, CAMPAIGN, INSTALL, VERIFY, CLEANUP);
-        vm.expectRevert(CampaignEscrow.SelfVerification.selector);
         escrow.assignWorkers(PLACEMENT, installer, installer);
         vm.stopPrank();
+
+        _report(true);
+        assertEq(usdc.balanceOf(installer), INSTALL + VERIFY);
+        assertEq(escrow.heldBalance(CAMPAIGN), 60e6 - INSTALL - VERIFY);
+    }
+
+    function test_selfVerifiedPlacementStaysLockedWhenRejected() public {
+        vm.prank(brand);
+        escrow.fundCampaign(CAMPAIGN, 60e6);
+        vm.startPrank(operator);
+        escrow.registerPlacement(PLACEMENT, CAMPAIGN, INSTALL, VERIFY, CLEANUP);
+        escrow.assignWorkers(PLACEMENT, installer, installer);
+        vm.stopPrank();
+
+        _report(false);
+        assertEq(usdc.balanceOf(installer), 0);
     }
 
     function test_onlyForwarderDeliversReports() public {

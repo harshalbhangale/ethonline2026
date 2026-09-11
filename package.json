@@ -6,8 +6,8 @@
   "scripts": {
     "dev": "next dev --turbopack",
     "dev:webpack": "next dev",
-    "build": "next build",
-    "build:turbopack": "next build --turbopack",
+    "build": "next build --turbopack",
+    "build:webpack": "next build",
     "start": "next start",
     "lint": "next lint",
     "typecheck": "tsc --noEmit",

@@ -167,7 +167,7 @@ export async function createCampaignQuote(
     );
   }
 
-  const computed = computeQuote(assignedLocationCount);
+  const computed = computeQuote(assignedLocationCount, campaign.assetType);
 
   const quote = await prisma.$transaction(async (transaction) => {
     const latest = await transaction.campaignQuote.findFirst({

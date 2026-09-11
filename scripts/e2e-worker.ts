@@ -3,12 +3,13 @@
  * its API routes call.
  *
  *   1. A brand funds a one-placement campaign from its Privy treasury.
- *   2. Worker A sees the job with an approximate location, accepts it, uploads
- *      a photo straight to private storage and submits proof.
- *   3. Worker A cannot check their own placement.
- *   4. Worker B takes the check and reports the poster missing; A recaptures.
- *   5. Worker B checks again with their own photo; the Chainlink CRE
- *      confidential workflow verifies and the escrow pays both Privy wallets.
+ *   2. Worker A sees the job with an approximate location and accepts it.
+ *   3. A's live trail reaches the venue; "Stick & verify" unlocks.
+ *   4. A submits the poster code and a photo; bad codes are refused.
+ *   5. The Chainlink CRE confidential workflow judges the trail, code and
+ *      photo, and the escrow pays A both rewards.
+ *   With E2E_SPOT_CHECK=1 the enclave draws a spot check instead: worker B
+ *   confirms independently before anyone is paid.
  *
  * Requires the app running at E2E_APP_URL (default http://127.0.0.1:3100) for
  * CRE callbacks, the CRE CLI, Supabase storage and a funded operator key.
@@ -32,7 +33,7 @@ import {
   getWallet,
   listCheckableTasks,
   listPlaceableTasks,
-  rejectPlacement,
+  recordPing,
   submitInstallProof,
 } from "@/lib/jobs/worker-view";
 import { createCampaignQuote } from "@/lib/quotes/service";
@@ -41,6 +42,9 @@ import { getTreasury, topUpTreasury } from "@/lib/treasury/service";
 
 const APP_URL = process.env.E2E_APP_URL ?? "http://127.0.0.1:3100";
 const LOCATION = "cpt-waterfront-visitor-board";
+/** E2E_SPOT_CHECK=1 forces a random spot check by a second worker. */
+const SPOT_CHECK = process.env.E2E_SPOT_CHECK === "1";
+process.env.STICKERBOMB_SPOT_CHECK_PERCENT = SPOT_CHECK ? "100" : "0";
 const PNG_SIGNATURE = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
 
 const prisma = getPrismaClient();
@@ -108,6 +112,16 @@ async function uploadPhoto(placementId: string, workerCtx: WorkerContext) {
   return path;
 }
 
+async function waitForStatus(placementId: string, statuses: PlacementStatus[]) {
+  const started = Date.now();
+  while (Date.now() - started < 8 * 60_000) {
+    const placement = await prisma.placement.findUniqueOrThrow({ where: { id: placementId } });
+    if (statuses.includes(placement.status)) return placement;
+    await new Promise((resolve) => setTimeout(resolve, 5_000));
+  }
+  throw new Error(`Timed out waiting for ${statuses.join("/")}.`);
+}
+
 async function waitForSettlement(placementId: string) {
   const started = Date.now();
   while (Date.now() - started < 8 * 60_000) {
@@ -128,6 +142,14 @@ async function waitForSettlement(placementId: string) {
 async function main() {
   const context = await brand();
   const location = await prisma.location.findUniqueOrThrow({ where: { slug: LOCATION } });
+  // Earlier runs hold this venue's capacity; end them, as a brand would.
+  await prisma.campaign.updateMany({
+    where: {
+      organizationId: context.organizationId,
+      status: { in: ["FUNDED", "ASSETS_READY", "DEPLOYING", "VERIFYING", "LIVE"] },
+    },
+    data: { status: "COMPLETE" },
+  });
 
   const campaign = await prisma.campaign.create({
     data: {
@@ -181,30 +203,52 @@ async function main() {
 
   const accepted = await acceptPlacement(A, placement.id);
   check("accepting reveals the exact surface", accepted.placementInstructions === location.placementInstructions && accepted.status === "ACCEPTED", accepted.status);
+  check("placement is self-verified by default", accepted.verificationMode === "SELF", accepted.verificationMode);
 
-  check("proof without a photo is refused", (await outcome(submitInstallProof(A, placement.id, near()))) === "422 PHOTO_REQUIRED");
+  // A walks to the venue: a trail approaching over ~2 minutes, then on site.
+  const job = await prisma.job.findFirstOrThrow({ where: { placementId: placement.id, role: "INSTALLER" } });
+  const now = Date.now();
+  await prisma.locationPing.createMany({
+    data: Array.from({ length: 12 }, (_, index) => {
+      const remaining = Math.max(0, 7 - index) * 0.0006;
+      return {
+        placementId: placement.id,
+        jobId: job.id,
+        workerUserId: A.userId,
+        latitude: location.latitude + remaining,
+        longitude: location.longitude,
+        accuracyMeters: 8,
+        recordedAt: new Date(now - (12 - index) * 10_000),
+      };
+    }),
+  });
+  const ping = await recordPing(A, placement.id, { ...near(), accuracyMeters: 8 });
+  check("live ping: on site long enough to unlock", ping.insideFence && ping.readyToVerify, ping);
+
+  const code = (
+    await prisma.placement.findUniqueOrThrow({
+      where: { id: placement.id },
+      select: { asset: { select: { shortCode: true } } },
+    })
+  ).asset.shortCode;
+  check("proof without a photo is refused", (await outcome(submitInstallProof(A, placement.id, { ...near(), scannedShortCode: code }, APP_URL))) === "422 PHOTO_REQUIRED");
   const photoA1 = await uploadPhoto(placement.id, A);
-  check("a photo from far away is refused", (await outcome(submitInstallProof(A, placement.id, { photoPath: photoA1, latitude: location.latitude + 0.02, longitude: location.longitude }))) === "422 OUTSIDE_GEOFENCE");
-  await submitInstallProof(A, placement.id, { photoPath: photoA1, ...near() });
-  check("installer proof submitted", (await getTask(A, placement.id)).status === "AWAITING_CHECK");
+  check("proof without the poster code is refused", (await outcome(submitInstallProof(A, placement.id, { photoPath: photoA1, ...near() }, APP_URL))) === "422 POSTER_CODE_REQUIRED");
+  check("a different poster's code is refused", (await outcome(submitInstallProof(A, placement.id, { photoPath: photoA1, ...near(), scannedShortCode: "WRONG1" }, APP_URL))) === "422 WRONG_POSTER");
+  check("a photo from far away is refused", (await outcome(submitInstallProof(A, placement.id, { photoPath: photoA1, latitude: location.latitude + 0.02, longitude: location.longitude, scannedShortCode: code }, APP_URL))) === "422 OUTSIDE_GEOFENCE");
 
-  check("installer never sees their own check", !(await listCheckableTasks(A)).some((task) => task.id === placement.id));
-  check("installer cannot take their own check", (await outcome(acceptCheck(A, placement.id))) === "403 SELF_VERIFICATION");
+  const submitted = await submitInstallProof(A, placement.id, { photoPath: photoA1, ...near(), accuracyMeters: 8, scannedShortCode: code.toLowerCase() }, APP_URL);
+  check("stick & verify: straight to the confidential check", submitted.status === "IN_REVIEW", submitted.status);
 
-  await acceptCheck(B, placement.id);
-  check("independent worker B took the check", (await getTask(B, placement.id)).status === "CHECK_ACCEPTED");
-  await rejectPlacement(B, placement.id, "not on the board");
-  const afterReject = await getTask(A, placement.id);
-  check("'not there' sends the installer back with a reason", afterReject.status === "ACCEPTED" && Boolean(afterReject.rejectionReason), afterReject);
-
-  const photoA2 = await uploadPhoto(placement.id, A);
-  await submitInstallProof(A, placement.id, { photoPath: photoA2, ...near() });
-  check("recaptured proof reopens the check", (await getTask(A, placement.id)).status === "AWAITING_CHECK");
-
-  await acceptCheck(B, placement.id);
-  const photoB = await uploadPhoto(placement.id, B);
-  const confirmed = await confirmPlacement(B, placement.id, { photoPath: photoB, ...near() }, APP_URL);
-  check("check confirmed; confidential verification running", confirmed.status === "IN_REVIEW", confirmed.status);
+  if (SPOT_CHECK) {
+    const drawn = await waitForStatus(placement.id, [PlacementStatus.AWAITING_VERIFIER]);
+    check("Chainlink CRE drew a spot check; nothing paid yet", drawn.status === PlacementStatus.AWAITING_VERIFIER && drawn.spotCheckRequired);
+    check("installer cannot take their own spot check", (await outcome(acceptCheck(A, placement.id))) === "403 SELF_VERIFICATION");
+    await acceptCheck(B, placement.id);
+    const photoB = await uploadPhoto(placement.id, B);
+    const confirmed = await confirmPlacement(B, placement.id, { photoPath: photoB, ...near(), scannedShortCode: code }, APP_URL);
+    check("spot check confirmed; verification running again", confirmed.status === "IN_REVIEW", confirmed.status);
+  }
 
   const settled = await waitForSettlement(placement.id);
   check("Chainlink CRE approved and escrow settled", settled.status === PlacementStatus.VERIFIED, settled.run?.reasons);
@@ -212,7 +256,11 @@ async function main() {
 
   const [walletA, walletB] = await Promise.all([getWallet(A), getWallet(B)]);
   check("installer earned 6.00", walletA.history.some((entry) => entry.kind === "INSTALLER_PAYOUT" && entry.amountMinor === "600"), walletA.history);
-  check("verifier earned 4.00", walletB.history.some((entry) => entry.kind === "VERIFIER_PAYOUT" && entry.amountMinor === "400"), walletB.history);
+  if (SPOT_CHECK) {
+    check("spot checker earned 4.00", walletB.history.some((entry) => entry.kind === "VERIFIER_PAYOUT" && entry.amountMinor === "400"), walletB.history);
+  } else {
+    check("self-verifier also earned the 4.00 check fee", walletA.history.some((entry) => entry.kind === "VERIFIER_PAYOUT" && entry.amountMinor === "400"), walletA.history);
+  }
   log("payout wallets", walletA.payoutAddress, walletB.payoutAddress);
 
   log(failures ? `${failures} FAILED` : "WORKER E2E COMPLETE", `${APP_URL}/brand/campaigns/${campaign.id}`);

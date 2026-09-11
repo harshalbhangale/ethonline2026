@@ -1,24 +1,41 @@
 import { describe, expect, test } from "bun:test";
-import { evaluatePlacement, type EvidenceBundle, type EvidenceSubmission } from "./checks";
+import {
+  evaluatePlacement,
+  isSpotCheckSelected,
+  type EvidenceBundle,
+  type EvidenceSubmission,
+  type LocationPing,
+} from "./checks";
 
 const now = Date.parse("2026-09-11T10:00:00Z");
+const site = { latitude: 12.9116, longitude: 77.6446 };
 
 function submission(overrides: Partial<EvidenceSubmission> = {}): EvidenceSubmission {
   return {
     role: "INSTALLER",
     workerRef: "worker-a",
     scannedShortCode: "AB12CD",
-    latitude: 40.71234,
-    longitude: -74.00567,
+    latitude: site.latitude,
+    longitude: site.longitude,
     accuracyMeters: 8,
     capturedAt: new Date(now).toISOString(),
-    challengeSymbol: "K7QX",
-    challengeResponse: "K7QX",
-    challengeIssuedAt: new Date(now - 60_000).toISOString(),
+    challengeSymbol: "PHOTO",
+    challengeResponse: "PHOTO",
+    challengeIssuedAt: new Date(now - 10 * 60_000).toISOString(),
     challengeExpiresAt: new Date(now + 60_000).toISOString(),
     mediaHash: "0x" + "a".repeat(64),
     ...overrides,
   };
+}
+
+/** Walking in from ~600 m away and waiting two minutes on site. */
+function arrivingTrail(): LocationPing[] {
+  return [
+    { latitude: site.latitude + 0.0055, longitude: site.longitude, accuracyMeters: 10, recordedAt: new Date(now - 8 * 60_000).toISOString() },
+    { latitude: site.latitude + 0.0025, longitude: site.longitude, accuracyMeters: 10, recordedAt: new Date(now - 5 * 60_000).toISOString() },
+    { latitude: site.latitude + 0.0001, longitude: site.longitude, accuracyMeters: 8, recordedAt: new Date(now - 2 * 60_000).toISOString() },
+    { latitude: site.latitude, longitude: site.longitude, accuracyMeters: 6, recordedAt: new Date(now - 30_000).toISOString() },
+  ];
 }
 
 function bundle(overrides: Partial<EvidenceBundle> = {}): EvidenceBundle {
@@ -26,60 +43,160 @@ function bundle(overrides: Partial<EvidenceBundle> = {}): EvidenceBundle {
     placementId: "placement1234",
     onchainPlacementId: "0x" + "1".repeat(64),
     expectedShortCode: "AB12CD",
-    geofence: { latitude: 40.71234, longitude: -74.00567, radiusMeters: 75 },
+    mode: "SELF",
+    geofence: { ...site, radiusMeters: 75 },
     installation: submission(),
-    verification: submission({
-      role: "VERIFIER",
-      workerRef: "worker-b",
-      latitude: 40.71239,
-      mediaHash: "0x" + "b".repeat(64),
-    }),
+    verification: null,
+    trail: arrivingTrail(),
     priorMediaHashes: [],
     ...overrides,
   };
 }
 
-describe("evaluatePlacement", () => {
-  test("approves two independent, fresh, on-site proofs", () => {
+describe("self-verified placements", () => {
+  test("approve a worker who arrived, waited and photographed on site", () => {
     expect(evaluatePlacement(bundle())).toEqual({ approved: true, reasons: [] });
   });
 
-  test("rejects proof captured outside the geofence", () => {
-    const verdict = evaluatePlacement(
-      bundle({ installation: submission({ latitude: 40.73234 }) }),
-    );
-    expect(verdict.approved).toBe(false);
-    expect(verdict.reasons).toContain("INSTALLER:OUTSIDE_GEOFENCE");
+  test("reject a photo with no location trail", () => {
+    expect(evaluatePlacement(bundle({ trail: [] })).reasons).toContain("INSTALLER:NO_LOCATION_TRAIL");
   });
 
-  test("rejects the wrong QR code", () => {
-    const verdict = evaluatePlacement(
-      bundle({ verification: submission({ role: "VERIFIER", workerRef: "worker-b", scannedShortCode: "ZZ99", mediaHash: "0x" + "c".repeat(64) }) }),
-    );
-    expect(verdict.reasons).toContain("VERIFIER:WRONG_QR");
+  test("reject a worker never seen inside the fence", () => {
+    const far = arrivingTrail().map((ping) => ({ ...ping, latitude: site.latitude + 0.02 }));
+    expect(evaluatePlacement(bundle({ trail: far })).reasons).toContain("INSTALLER:NEVER_ARRIVED");
   });
 
-  test("rejects an expired challenge", () => {
-    const verdict = evaluatePlacement(
-      bundle({ installation: submission({ capturedAt: new Date(now + 5 * 60_000).toISOString() }) }),
-    );
-    expect(verdict.reasons).toContain("INSTALLER:CHALLENGE_EXPIRED");
+  test("reject a photo taken seconds after arriving", () => {
+    const rushed = [
+      { ...arrivingTrail()[0] },
+      { latitude: site.latitude, longitude: site.longitude, accuracyMeters: 6, recordedAt: new Date(now - 5_000).toISOString() },
+    ];
+    expect(evaluatePlacement(bundle({ trail: rushed })).reasons).toContain("INSTALLER:TOO_SHORT_ON_SITE");
   });
 
-  test("rejects self-verification", () => {
-    const verdict = evaluatePlacement(
-      bundle({ verification: submission({ role: "VERIFIER", mediaHash: "0x" + "d".repeat(64) }) }),
-    );
-    expect(verdict.reasons).toContain("SELF_VERIFICATION");
+  test("reject a spoofed jump across the city", () => {
+    const teleport = [
+      { latitude: 13.0, longitude: 77.5, accuracyMeters: 10, recordedAt: new Date(now - 3 * 60_000).toISOString() },
+      ...arrivingTrail().slice(2),
+    ];
+    expect(evaluatePlacement(bundle({ trail: teleport })).reasons).toContain("INSTALLER:IMPOSSIBLE_TRAVEL");
   });
 
-  test("rejects media reused from another placement", () => {
+  test("reject the wrong poster code", () => {
+    const verdict = evaluatePlacement(bundle({ installation: submission({ scannedShortCode: "ZZ99" }) }));
+    expect(verdict.reasons).toContain("INSTALLER:WRONG_QR");
+  });
+
+  test("reject a reused photo", () => {
     const verdict = evaluatePlacement(bundle({ priorMediaHashes: ["0x" + "a".repeat(64)] }));
     expect(verdict.reasons).toContain("INSTALLER:DUPLICATE_MEDIA");
   });
+});
 
-  test("rejects a placement without verifier proof", () => {
-    const verdict = evaluatePlacement(bundle({ verification: null }));
-    expect(verdict.reasons).toEqual(["MISSING_VERIFICATION"]);
+describe("independent spot checks", () => {
+  const verifier = submission({ role: "VERIFIER", workerRef: "worker-b", mediaHash: "0x" + "b".repeat(64) });
+
+  test("approve two independent proofs", () => {
+    expect(evaluatePlacement(bundle({ mode: "INDEPENDENT", verification: verifier }))).toEqual({
+      approved: true,
+      reasons: [],
+    });
+  });
+
+  test("reject the installer checking themselves", () => {
+    const self = submission({ role: "VERIFIER", mediaHash: "0x" + "c".repeat(64) });
+    expect(evaluatePlacement(bundle({ mode: "INDEPENDENT", verification: self })).reasons).toContain("SELF_VERIFICATION");
+  });
+
+  test("reject a spot check without the checker's proof", () => {
+    expect(evaluatePlacement(bundle({ mode: "INDEPENDENT" })).reasons).toContain("MISSING_VERIFICATION");
+  });
+});
+
+describe("spot check sampling", () => {
+  test("never selects at 0% and always at 100%", () => {
+    expect(isSpotCheckSelected("0x" + "f".repeat(64), 0)).toBe(false);
+    expect(isSpotCheckSelected("0x" + "0".repeat(64), 100)).toBe(true);
+  });
+
+  test("selects roughly the requested share", () => {
+    let selected = 0;
+    for (let index = 0; index < 1000; index++) {
+      const seed = (index * 2654435761 % 4294967296).toString(16).padStart(8, "0");
+      if (isSpotCheckSelected(seed, 20)) selected++;
+    }
+    expect(selected).toBeGreaterThan(150);
+    expect(selected).toBeLessThan(250);
+  });
+});
+
+/**
+ * Lenient mode exists so a live demonstration is not derailed by a phone that
+ * refused location or a challenge that timed out while someone was talking.
+ * These tests pin what it forgives and, more importantly, what it does not.
+ */
+describe("lenient verification", () => {
+  const lenient = { lenient: true };
+
+  test("approve a photo on site with no location trail at all", () => {
+    expect(evaluatePlacement(bundle({ trail: [] }), lenient)).toEqual({
+      approved: true,
+      reasons: [],
+    });
+  });
+
+  test("approve a photo taken the instant the worker arrived", () => {
+    const justArrived = [
+      { latitude: site.latitude, longitude: site.longitude, accuracyMeters: 8, recordedAt: new Date(now - 1_000).toISOString() },
+      { latitude: site.latitude, longitude: site.longitude, accuracyMeters: 8, recordedAt: new Date(now).toISOString() },
+    ];
+    expect(evaluatePlacement(bundle({ trail: justArrived }), lenient).approved).toBe(true);
+  });
+
+  test("approve a photo whose challenge had already expired", () => {
+    const stale = submission({
+      challengeExpiresAt: new Date(now - 10 * 60_000).toISOString(),
+      challengeResponse: "SOMETHING-ELSE",
+    });
+    expect(evaluatePlacement(bundle({ installation: stale }), lenient).approved).toBe(true);
+  });
+
+  test("still reject a photo taken across the city", () => {
+    const faraway = submission({ latitude: site.latitude + 0.02 });
+    expect(
+      evaluatePlacement(bundle({ installation: faraway, trail: [] }), lenient).reasons,
+    ).toContain("INSTALLER:OUTSIDE_GEOFENCE");
+  });
+
+  test("still reject the wrong poster", () => {
+    const wrongPoster = submission({ scannedShortCode: "ZZ99ZZ" });
+    expect(
+      evaluatePlacement(bundle({ installation: wrongPoster }), lenient).reasons,
+    ).toContain("INSTALLER:WRONG_QR");
+  });
+
+  test("still reject a reused photo", () => {
+    const reused = bundle({ priorMediaHashes: ["0x" + "a".repeat(64)] });
+    expect(evaluatePlacement(reused, lenient).reasons).toContain("INSTALLER:DUPLICATE_MEDIA");
+  });
+
+  test("still reject the installer checking their own work", () => {
+    const selfChecked = bundle({
+      mode: "INDEPENDENT",
+      verification: submission({ role: "VERIFIER", mediaHash: "0x" + "b".repeat(64) }),
+    });
+    expect(evaluatePlacement(selfChecked, lenient).reasons).toContain("SELF_VERIFICATION");
+  });
+
+  test("still reject a trail that teleports across the country", () => {
+    const teleport = [
+      { latitude: site.latitude, longitude: site.longitude, accuracyMeters: 8, recordedAt: new Date(now - 120_000).toISOString() },
+      { latitude: site.latitude + 5, longitude: site.longitude, accuracyMeters: 8, recordedAt: new Date(now - 60_000).toISOString() },
+      { latitude: site.latitude, longitude: site.longitude, accuracyMeters: 8, recordedAt: new Date(now).toISOString() },
+    ];
+    expect(evaluatePlacement(bundle({ trail: teleport }), lenient).reasons).toContain(
+      "INSTALLER:IMPOSSIBLE_TRAVEL",
+    );
   });
 });

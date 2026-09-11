@@ -21,3 +21,5 @@ semantic-review/
 *.wasm
 # Separate Next.js build directories (NEXT_DIST_DIR)
 /.next-*/
+.vercel
+.deploy-keys/

@@ -4,6 +4,7 @@ import {
   JobRole,
   JobStatus,
   PlacementStatus,
+  VerificationMode,
 } from "@/generated/prisma/client";
 import type { Hex } from "viem";
 import type { BrandContext } from "@/lib/auth/require-brand";
@@ -12,6 +13,7 @@ import { campaignEscrowAbi } from "@/lib/chain/abis";
 import { getPublicClient, waitForSuccess, withOperator } from "@/lib/chain/client";
 import { getChainConfig, isOnchainConfigured } from "@/lib/chain/config";
 import { explorerAddressUrl } from "@/lib/chain/explorer";
+import { placementEscrowKey } from "@/lib/chain/keys";
 import { markChainTransaction, recordChainTransaction } from "@/lib/chain/ledger";
 import { centsToTokenUnits, formatTokenUnits } from "@/lib/chain/units";
 import { getPrismaClient } from "@/lib/database/prisma";
@@ -22,10 +24,17 @@ import type { ChainTransactionDto } from "@/lib/treasury/types";
 /** Mirrors CampaignEscrow.PlacementStatus. */
 const OnchainStatus = { None: 0, Registered: 1, Verified: 2, Removed: 3 } as const;
 
-async function readOnchainPlacement(key: Hex) {
-  const config = getChainConfig();
+/**
+ * Each campaign settles in the escrow it was funded into, which stays correct
+ * after a new escrow version is deployed for later campaigns.
+ */
+function escrowFor(campaign: { escrowAddress: string | null }) {
+  return (campaign.escrowAddress ?? getChainConfig().escrow) as Hex;
+}
+
+async function readOnchainPlacement(escrow: Hex, key: Hex) {
   const [, installer, verifier, , , , status] = await getPublicClient().readContract({
-    address: config.escrow,
+    address: escrow,
     abi: campaignEscrowAbi,
     functionName: "placements",
     args: [key],
@@ -44,7 +53,7 @@ async function confirmOperatorTx(hash: Hex) {
 }
 
 /**
- * Registers every placement of a funded campaign in the escrow, reserving its
+ * Registers every placement of a funded campaign in its escrow, reserving the
  * installer, verifier and cleanup rewards. Idempotent: placements already
  * registered onchain are only linked.
  */
@@ -54,11 +63,11 @@ export async function registerCampaignPlacements(campaignId: string) {
   const prisma = getPrismaClient();
   const campaign = await prisma.campaign.findUnique({
     where: { id: campaignId },
-    select: { escrowCampaignId: true, organizationId: true },
+    select: { escrowCampaignId: true, escrowAddress: true, organizationId: true },
   });
   if (!campaign?.escrowCampaignId) return;
 
-  const config = getChainConfig();
+  const escrow = escrowFor(campaign);
   const placements = await prisma.placement.findMany({
     where: { campaignId, onchainPlacementId: null },
     include: { jobs: { where: { role: JobRole.INSTALLER }, select: { rewardMinor: true } } },
@@ -66,8 +75,8 @@ export async function registerCampaignPlacements(campaignId: string) {
   });
 
   for (const placement of placements) {
-    const key = (await import("@/lib/chain/keys")).placementEscrowKey(placement.id);
-    const onchain = await readOnchainPlacement(key);
+    const key = placementEscrowKey(placement.id);
+    const onchain = await readOnchainPlacement(escrow, key);
 
     if (onchain.status === OnchainStatus.None) {
       const installerMinor =
@@ -75,7 +84,7 @@ export async function registerCampaignPlacements(campaignId: string) {
 
       await withOperator(async (operator) => {
         const hash = await operator.writeContract({
-          address: config.escrow,
+          address: escrow,
           abi: campaignEscrowAbi,
           functionName: "registerPlacement",
           args: [
@@ -93,7 +102,7 @@ export async function registerCampaignPlacements(campaignId: string) {
           campaignId,
           placementId: placement.id,
           fromAddress: operator.account.address,
-          toAddress: config.escrow,
+          toAddress: escrow,
           amount: centsToTokenUnits(
             installerMinor +
               BigInt(perPlacementMinor.verification + perPlacementMinor.cleanupReserve),
@@ -110,9 +119,16 @@ export async function registerCampaignPlacements(campaignId: string) {
   }
 }
 
+const assignInclude = {
+  campaign: { select: { organizationId: true, escrowAddress: true } },
+  installer: { select: { walletAddress: true } },
+  verifier: { select: { walletAddress: true } },
+} as const;
+
 /**
- * Records the independent installer and verifier payout wallets onchain. The
- * escrow itself refuses the same address for both roles.
+ * Records the payout wallets onchain. A self-verified placement names its
+ * installer in both roles, so they receive both rewards; a spot-checked one
+ * names the independent checker as verifier.
  */
 export async function assignPlacementWorkers(placementId: string) {
   if (!isOnchainConfigured()) return;
@@ -120,37 +136,33 @@ export async function assignPlacementWorkers(placementId: string) {
   const prisma = getPrismaClient();
   let placement = await prisma.placement.findUniqueOrThrow({
     where: { id: placementId },
-    include: {
-      campaign: { select: { organizationId: true } },
-      installer: { select: { walletAddress: true } },
-      verifier: { select: { walletAddress: true } },
-    },
+    include: assignInclude,
   });
 
   if (!placement.onchainPlacementId) {
     await registerCampaignPlacements(placement.campaignId);
     placement = await prisma.placement.findUniqueOrThrow({
       where: { id: placementId },
-      include: {
-        campaign: { select: { organizationId: true } },
-        installer: { select: { walletAddress: true } },
-        verifier: { select: { walletAddress: true } },
-      },
+      include: assignInclude,
     });
   }
 
   const installer = placement.installer?.walletAddress;
-  const verifier = placement.verifier?.walletAddress;
+  const verifier =
+    placement.verificationMode === VerificationMode.SELF
+      ? installer
+      : placement.verifier?.walletAddress;
   if (!placement.onchainPlacementId || !installer || !verifier) {
     throw new ApiError(
       409,
       "WORKER_WALLET_MISSING",
-      "Both the installer and the verifier need a payout wallet before settlement.",
+      "Every worker on this placement needs a payout wallet before settlement.",
     );
   }
 
+  const escrow = escrowFor(placement.campaign);
   const key = placement.onchainPlacementId as Hex;
-  const onchain = await readOnchainPlacement(key);
+  const onchain = await readOnchainPlacement(escrow, key);
   if (
     onchain.installer.toLowerCase() === installer.toLowerCase() &&
     onchain.verifier.toLowerCase() === verifier.toLowerCase()
@@ -158,10 +170,9 @@ export async function assignPlacementWorkers(placementId: string) {
     return;
   }
 
-  const config = getChainConfig();
   await withOperator(async (operator) => {
     const hash = await operator.writeContract({
-      address: config.escrow,
+      address: escrow,
       abi: campaignEscrowAbi,
       functionName: "assignWorkers",
       args: [key, installer as Hex, verifier as Hex],
@@ -173,7 +184,7 @@ export async function assignPlacementWorkers(placementId: string) {
       campaignId: placement.campaignId,
       placementId,
       fromAddress: operator.account.address,
-      toAddress: config.escrow,
+      toAddress: escrow,
     });
     await confirmOperatorTx(hash);
   });
@@ -210,8 +221,8 @@ async function refreshCampaignStatus(campaignId: string) {
 }
 
 /**
- * Reads a placement's settlement from the escrow and mirrors it in the
- * database: the placement becomes VERIFIED and both jobs PAID. Contract state
+ * Reads a placement's settlement from its escrow and mirrors it in the
+ * database: the placement becomes VERIFIED and its jobs PAID. Contract state
  * is the source of truth; this only ever follows it.
  */
 export async function syncPlacementFromChain(placementId: string) {
@@ -220,7 +231,10 @@ export async function syncPlacementFromChain(placementId: string) {
   const prisma = getPrismaClient();
   const placement = await prisma.placement.findUnique({
     where: { id: placementId },
-    include: { campaign: { select: { organizationId: true } }, jobs: true },
+    include: {
+      campaign: { select: { organizationId: true, escrowAddress: true } },
+      jobs: true,
+    },
   });
   if (!placement?.onchainPlacementId) return;
 
@@ -231,17 +245,17 @@ export async function syncPlacementFromChain(placementId: string) {
   ];
   if (settled.includes(placement.status)) return;
 
+  const escrow = escrowFor(placement.campaign);
   const key = placement.onchainPlacementId as Hex;
-  const onchain = await readOnchainPlacement(key);
+  const onchain = await readOnchainPlacement(escrow, key);
   if (onchain.status < OnchainStatus.Verified) return;
 
-  const config = getChainConfig();
   const logs = await getPublicClient().getContractEvents({
-    address: config.escrow,
+    address: escrow,
     abi: campaignEscrowAbi,
     eventName: "PlacementVerified",
     args: { placementId: key },
-    fromBlock: config.deployBlock,
+    fromBlock: getChainConfig().deployBlock,
   });
   const log = logs.at(-1);
 
@@ -254,7 +268,7 @@ export async function syncPlacementFromChain(placementId: string) {
       organizationId: placement.campaign.organizationId,
       campaignId: placement.campaignId,
       placementId,
-      fromAddress: config.escrow,
+      fromAddress: escrow,
       amount: (log.args.installerPaid ?? BigInt(0)) + (log.args.verifierPaid ?? BigInt(0)),
       blockNumber: log.blockNumber,
     });
@@ -264,6 +278,7 @@ export async function syncPlacementFromChain(placementId: string) {
   const paidJobs = placement.jobs.filter(
     (job) =>
       (job.role === JobRole.INSTALLER || job.role === JobRole.VERIFIER) &&
+      job.workerUserId &&
       job.status !== JobStatus.PAID,
   );
 
@@ -282,7 +297,7 @@ export async function syncPlacementFromChain(placementId: string) {
       where: { placementId, status: EvidenceStatus.SUBMITTED },
       data: { status: EvidenceStatus.ACCEPTED },
     });
-    const workerIds = paidJobs.flatMap((job) => (job.workerUserId ? [job.workerUserId] : []));
+    const workerIds = [...new Set(paidJobs.flatMap((job) => (job.workerUserId ? [job.workerUserId] : [])))];
     await transaction.workerProfile.updateMany({
       where: { userId: { in: workerIds } },
       data: { completedJobs: { increment: 1 } },

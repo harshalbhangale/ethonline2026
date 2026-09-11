@@ -10,18 +10,22 @@ import {MockUSDC} from "../src/MockUSDC.sol";
 /// Env:
 ///   PRIVATE_KEY        deployer; becomes escrow owner and operator
 ///   CRE_FORWARDER      Chainlink CRE forwarder allowed to deliver reports
+///   USDC_ADDRESS       optional; reuse this token instead of deploying MockUSDC,
+///                      so a new escrow version keeps the balances already held
 contract Deploy is Script {
     function run() external {
         uint256 deployerKey = vm.envUint("PRIVATE_KEY");
         address deployer = vm.addr(deployerKey);
         address forwarder = vm.envAddress("CRE_FORWARDER");
 
+        address token = vm.envOr("USDC_ADDRESS", address(0));
+
         vm.startBroadcast(deployerKey);
-        MockUSDC usdc = new MockUSDC();
-        CampaignEscrow escrow = new CampaignEscrow(address(usdc), deployer, forwarder);
+        if (token == address(0)) token = address(new MockUSDC());
+        CampaignEscrow escrow = new CampaignEscrow(token, deployer, forwarder);
         vm.stopBroadcast();
 
-        console2.log("MockUSDC", address(usdc));
+        console2.log("Token", token);
         console2.log("CampaignEscrow", address(escrow));
         console2.log("Operator", deployer);
         console2.log("Forwarder", forwarder);

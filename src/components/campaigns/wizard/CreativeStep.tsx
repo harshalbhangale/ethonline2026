@@ -12,6 +12,12 @@ import type { CampaignAssetsResponse } from "@/lib/assets/types";
 import { normalizeCampaignDestination } from "@/lib/campaigns/destination";
 import type { CampaignDto } from "@/lib/campaigns/types";
 
+type ArtworkResponse = {
+  path: string | null;
+  artworkHash: string | null;
+  viewUrl: string | null;
+};
+
 export default function CreativeStep({
   campaign,
   submitting,
@@ -26,6 +32,10 @@ export default function CreativeStep({
   const [error, setError] = useState<string | null>(null);
   const [assets, setAssets] = useState<CampaignAssetsResponse["assets"]>([]);
   const [loadingAssets, setLoadingAssets] = useState(true);
+  const [artworkUrl, setArtworkUrl] = useState<string | null>(null);
+  const [uploading, setUploading] = useState(false);
+  const [artworkError, setArtworkError] = useState<string | null>(null);
+  const artworkInput = useRef<HTMLInputElement>(null);
 
   const requestSequence = useRef(0);
   const requestController = useRef<AbortController | null>(null);
@@ -75,8 +85,70 @@ export default function CreativeStep({
     return cancelRequest;
   }, [loadAssets, cancelRequest]);
 
+  useEffect(() => {
+    let cancelled = false;
+
+    void authenticatedFetch<ArtworkResponse>(
+      getAccessToken,
+      `/api/campaigns/${campaign.id}/artwork`,
+    )
+      .then((response) => {
+        if (!cancelled) setArtworkUrl(response.viewUrl);
+      })
+      .catch(() => undefined);
+
+    return () => {
+      cancelled = true;
+    };
+  }, [campaign.id, getAccessToken]);
+
+  async function uploadArtwork(file: File) {
+    setUploading(true);
+    setArtworkError(null);
+
+    try {
+      const { signedUrl, path } = await authenticatedFetch<{
+        signedUrl: string;
+        path: string;
+      }>(getAccessToken, `/api/campaigns/${campaign.id}/artwork`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "upload-url", contentType: file.type }),
+      });
+
+      const upload = await fetch(signedUrl, {
+        method: "PUT",
+        headers: { "Content-Type": file.type },
+        body: file,
+      });
+      if (!upload.ok) throw new Error("Upload failed.");
+
+      const saved = await authenticatedFetch<ArtworkResponse>(
+        getAccessToken,
+        `/api/campaigns/${campaign.id}/artwork`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action: "save", path }),
+        },
+      );
+
+      setArtworkUrl(saved.viewUrl);
+    } catch (caught) {
+      setArtworkError(
+        caught instanceof ClientApiError
+          ? caught.message
+          : "Could not upload that image. Please try again.",
+      );
+    } finally {
+      setUploading(false);
+    }
+  }
+
   const normalized = normalizeCampaignDestination(destination);
   const canContinue = Boolean(normalized) && !submitting;
+  // Read from the browser so the tag is correct in every environment.
+  const origin = typeof window === "undefined" ? "" : window.location.origin;
 
   async function submit() {
     setError(null);
@@ -139,6 +211,22 @@ export default function CreativeStep({
           StickerBomb short link that always resolves to your current
           destination.
         </p>
+
+        <div className="border-t border-line px-6 py-5">
+          <p className="text-[13.5px] font-semibold">Measure what happens next</p>
+          <p className="mt-1.5 max-w-[62ch] text-[12.5px] leading-relaxed text-muted">
+            Scans are counted for you. Add this tag to your site and each arrival
+            and signup is traced back to the exact poster that caused it.
+          </p>
+          <pre className="mt-3 overflow-x-auto rounded-xl border border-line bg-bg px-4 py-3 font-mono text-[12px] leading-relaxed">
+            {`<script src="${origin}/sb.js" async></script>`}
+          </pre>
+          <p className="mt-2.5 text-[12px] leading-relaxed text-faint">
+            Call <code className="font-mono">stickerbomb(&quot;signup&quot;)</code>{" "}
+            at your own conversion point. Repeat reports of the same event are
+            ignored, so a reload cannot inflate the numbers.
+          </p>
+        </div>
       </Card>
 
       <Card className="overflow-hidden">
@@ -194,11 +282,58 @@ export default function CreativeStep({
             </div>
           )}
 
-          <p className="mt-4 text-[11.5px] leading-relaxed text-faint">
-            Uploading your own artwork needs object storage, which is not
-            configured yet. Until then StickerBomb produces the plain
-            high-contrast poster that the print pack always includes.
-          </p>
+          <div className="mt-5 border-t border-line pt-5">
+            <input
+              ref={artworkInput}
+              type="file"
+              accept="image/jpeg,image/png,image/webp"
+              className="hidden"
+              onChange={(event) => {
+                const file = event.target.files?.[0];
+                event.target.value = "";
+                if (file) void uploadArtwork(file);
+              }}
+            />
+
+            <div className="flex flex-wrap items-start justify-between gap-4">
+              <div className="max-w-[52ch]">
+                <p className="text-[13.5px] font-semibold">Your image</p>
+                <p className="mt-1.5 text-[12.5px] leading-relaxed text-muted">
+                  Upload artwork and the QR is woven into it as a halftone, so
+                  the poster looks like your brand rather than a barcode. Every
+                  poster is still decoded before it can be printed, and falls
+                  back to the plain high-contrast version if it does not read.
+                </p>
+              </div>
+              <button
+                type="button"
+                disabled={uploading}
+                onClick={() => artworkInput.current?.click()}
+                className="h-10 shrink-0 rounded-xl border border-line px-4 text-[13px] font-semibold hover:bg-raised disabled:opacity-50"
+              >
+                {uploading
+                  ? "Uploading…"
+                  : artworkUrl
+                    ? "Replace image"
+                    : "Upload image"}
+              </button>
+            </div>
+
+            {artworkUrl ? (
+              <Image
+                src={artworkUrl}
+                alt="Campaign artwork"
+                width={280}
+                height={280}
+                unoptimized
+                className="mt-4 h-40 w-auto rounded-xl border border-line object-contain"
+              />
+            ) : null}
+
+            {artworkError ? (
+              <p className="mt-3 text-[12.5px] text-fail">{artworkError}</p>
+            ) : null}
+          </div>
         </div>
 
         <div className="flex flex-wrap items-center justify-between gap-4 border-t border-line px-6 py-5">

@@ -18,7 +18,7 @@ import { ApiError } from "@/lib/http/api-error";
  *
  * This is presentation only. Workers and quotes read the structured columns.
  */
-function buildAreaLabel(geography: {
+export function buildAreaLabel(geography: {
   city: string | null;
   countryName: string | null;
   radiusMeters: number | null;
@@ -57,6 +57,7 @@ function toCampaignDto(campaign: Campaign): CampaignDto {
         : formatMinorUnits(campaign.budgetLimitMinor),
     destinationUrl: campaign.destinationUrl,
     deadline: campaign.deadline?.toISOString() ?? null,
+    assetType: campaign.assetType,
 
     areaLabel: campaign.areaLabel,
     countryCode: campaign.countryCode,
@@ -79,10 +80,45 @@ function toCampaignDto(campaign: Campaign): CampaignDto {
   };
 }
 
+/**
+ * A live campaign whose deadline has passed has finished its run. Settled
+ * lazily on read, so no scheduler is needed: the first look after the
+ * deadline is what completes it.
+ */
+async function completeEndedCampaigns(organizationId: string, campaignId?: string) {
+  await getPrismaClient().campaign.updateMany({
+    where: {
+      organizationId,
+      ...(campaignId ? { id: campaignId } : {}),
+      status: CampaignStatus.LIVE,
+      deadline: { lt: new Date() },
+    },
+    data: { status: CampaignStatus.COMPLETE },
+  });
+}
+
+/** The brand ends a live campaign early. Scans keep being counted. */
+export async function endCampaign(context: BrandContext, campaignId: string) {
+  const prisma = getPrismaClient();
+  const ended = await prisma.campaign.updateMany({
+    where: {
+      id: campaignId,
+      organizationId: context.organizationId,
+      status: { in: [CampaignStatus.LIVE, CampaignStatus.VERIFYING, CampaignStatus.DEPLOYING] },
+    },
+    data: { status: CampaignStatus.COMPLETE },
+  });
+  if (ended.count === 0) {
+    throw new ApiError(409, "CAMPAIGN_NOT_RUNNING", "Only a running campaign can be ended.");
+  }
+  return getCampaign(context, campaignId);
+}
+
 export async function listCampaigns(
   context: BrandContext,
 ): Promise<CampaignListResponse> {
   const prisma = getPrismaClient();
+  await completeEndedCampaigns(context.organizationId);
   const campaigns = await prisma.campaign.findMany({
     where: { organizationId: context.organizationId },
     orderBy: { updatedAt: "desc" },
@@ -113,6 +149,7 @@ export async function createCampaign(
       budgetLimitMinor: input.budgetLimit ?? null,
       destinationUrl: input.destinationUrl ?? null,
       deadline: input.deadline ?? null,
+      ...(input.assetType ? { assetType: input.assetType } : {}),
       countryCode: input.countryCode ?? null,
       countryName: input.countryName ?? null,
       city: input.city ?? null,
@@ -134,6 +171,7 @@ export async function getCampaign(
   campaignId: string,
 ): Promise<CampaignDto> {
   const prisma = getPrismaClient();
+  await completeEndedCampaigns(context.organizationId, campaignId);
   const campaign = await prisma.campaign.findFirst({
     where: {
       id: campaignId,
@@ -193,6 +231,7 @@ export async function updateCampaign(
   if (input.radiusMeters !== undefined) data.radiusMeters = input.radiusMeters;
   if (input.locationStrategy !== undefined)
     data.locationStrategy = input.locationStrategy;
+  if (input.assetType !== undefined) data.assetType = input.assetType;
   if (input.wizardStep !== undefined) data.wizardStep = input.wizardStep;
 
   // The label always follows the structured geography it describes.

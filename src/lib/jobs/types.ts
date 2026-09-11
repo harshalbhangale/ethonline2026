@@ -112,8 +112,28 @@ export type WorkerTaskDto = {
   isVerifier: boolean;
   /** Why this worker's last photo was rejected, when a recapture is needed. */
   rejectionReason: string | null;
+  /** SELF: the installer verifies; INDEPENDENT: a random spot check. */
+  verificationMode: "SELF" | "INDEPENDENT";
+  /** "Stick & verify" unlocks inside this radius... */
+  geofenceRadiusMeters: number;
+  /** ...after this long on site. */
+  minDwellSeconds: number;
   /** Signed, short-lived. Only set on the single-job endpoint. */
   proofPhotoUrl?: string | null;
+};
+
+/**
+ * The answer to one live location ping while a worker holds a job: how far
+ * off they are, how long they have been on site, and whether that is enough
+ * to unlock proof submission.
+ */
+export type WorkerPingDto = {
+  distanceMetres: number;
+  insideFence: boolean;
+  secondsOnSite: number;
+  readyToVerify: boolean;
+  minDwellSeconds: number;
+  radiusMeters: number;
 };
 
 export type WorkerWalletDto = {

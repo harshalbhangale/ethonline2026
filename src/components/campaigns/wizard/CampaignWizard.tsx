@@ -21,6 +21,7 @@ import {
 } from "@/lib/campaigns/format";
 import type { SelectedPlace } from "@/lib/campaigns/geo";
 import type {
+  AssetTypeValue,
   CampaignDto,
   CampaignResponse,
   CampaignWizardStepValue,
@@ -259,6 +260,11 @@ export default function CampaignWizard() {
             countryName: place.countryName,
             centerLatitude: place.latitude,
             centerLongitude: place.longitude,
+            // Carried forward so the area step opens on a radius that actually
+            // reaches this city's approved surfaces.
+            ...(place.suggestedRadiusMetres
+              ? { radiusMeters: place.suggestedRadiusMetres }
+              : {}),
             wizardStep: "PLACEMENTS",
           }),
         },
@@ -279,6 +285,7 @@ export default function CampaignWizard() {
         radiusMetres: number;
       }[];
       strategy: LocationStrategyValue;
+      assetType: AssetTypeValue;
       locationIds: string[];
     },
     id: string,
@@ -286,48 +293,14 @@ export default function CampaignWizard() {
     setSubmitting(true);
 
     try {
-      // Areas must be stored before locations are assigned, because the server
-      // validates each location against the campaign's own stored geography.
-      await authenticatedFetch<{ areas: unknown[] }>(
-        getAccessToken,
-        `/api/campaigns/${id}/areas`,
-        {
-          method: "PUT",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ areas: input.areas }),
-        },
-      );
-
+      // One request saves areas, strategy, locations and progress together.
       await authenticatedFetch<CampaignResponse>(
         getAccessToken,
-        `/api/campaigns/${id}`,
-        {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ locationStrategy: input.strategy }),
-        },
-      );
-
-      await authenticatedFetch<{ selectedLocationIds: string[] }>(
-        getAccessToken,
-        `/api/campaigns/${id}/locations`,
+        `/api/campaigns/${id}/placement-plan`,
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            strategy: input.strategy,
-            locationIds: input.locationIds,
-          }),
-        },
-      );
-
-      await authenticatedFetch<CampaignResponse>(
-        getAccessToken,
-        `/api/campaigns/${id}`,
-        {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ wizardStep: "CREATIVE" }),
+          body: JSON.stringify(input),
         },
       );
 
@@ -476,6 +449,9 @@ export default function CampaignWizard() {
           campaign={campaign}
           submitting={submitting}
           onContinue={(input) => savePlacementArea(input, campaign.id)}
+          // Choosing the city is the first half of this same stage, so this
+          // reads as changing a value rather than going back a step.
+          onChangeCity={() => goToStep("LOCATION", campaign.id)}
         />
       ) : null}
 

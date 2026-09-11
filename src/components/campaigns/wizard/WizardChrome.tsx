@@ -3,7 +3,12 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, type ReactNode } from "react";
-import { stepNumber, wizardStepOrder, wizardStepTitles } from "@/lib/campaigns/wizard";
+import {
+  stageFromStep,
+  stageNumber,
+  wizardStages,
+  wizardStageTitles,
+} from "@/lib/campaigns/wizard";
 import type { CampaignWizardStepValue } from "@/lib/campaigns/types";
 
 function Mark() {
@@ -41,9 +46,9 @@ export default function WizardChrome({
   children: ReactNode;
 }) {
   const router = useRouter();
-  const current = stepNumber(step);
-  const total = wizardStepOrder.length;
-  const { title, sub } = wizardStepTitles[step];
+  const current = stageNumber(step);
+  const total = wizardStages.length;
+  const { title, sub } = wizardStageTitles[stageFromStep(step)];
 
   // Lock the page behind the dialog and close it with Escape.
   useEffect(() => {
@@ -99,7 +104,7 @@ export default function WizardChrome({
           </div>
 
           <div className="flex gap-1 px-5 pb-3 sm:px-7" aria-hidden>
-            {wizardStepOrder.map((item, index) => (
+            {wizardStages.map((item, index) => (
               <span
                 key={item}
                 className={`h-1 flex-1 rounded-full ${index < current ? "bg-solid" : "bg-line"}`}

@@ -41,6 +41,15 @@ enum LocationStrategy {
   MANUAL_SELECTION
 }
 
+/// The physical asset a campaign prints. Each tier carries a price multiplier
+/// applied to per-placement fulfilment costs in the deterministic quote engine.
+enum AssetType {
+  QR_NORMAL
+  QR_MAGIC
+  QR_VERY_MAGIC
+  NFC
+}
+
 enum LocationPermissionStatus {
   PENDING
   APPROVED
@@ -160,6 +169,11 @@ enum VerificationRunStatus {
   FAILED
 }
 
+enum VerificationMode {
+  SELF
+  INDEPENDENT
+}
+
 model User {
   id                   String               @id @default(cuid())
   privyUserId          String               @unique @map("privy_user_id") @db.VarChar(255)
@@ -170,6 +184,7 @@ model User {
   createdOrganizations Organization[]       @relation("OrganizationCreator")
   campaignsCreated     Campaign[]           @relation("CampaignCreator")
   evidence             Evidence[]
+  locationPings        LocationPing[]
   fundingRequested     FundingRequest[]     @relation("FundingRequester")
   fundingDecided       FundingRequest[]     @relation("FundingDecider")
   installedPlacements  Placement[]          @relation("PlacementInstaller")
@@ -181,24 +196,27 @@ model User {
 }
 
 model Organization {
-  id          String               @id @default(cuid())
-  name        String               @db.VarChar(120)
-  slug        String               @unique @db.VarChar(160)
-  createdById String               @map("created_by")
-  createdAt   DateTime             @default(now()) @map("created_at") @db.Timestamptz(3)
-  updatedAt   DateTime             @updatedAt @map("updated_at") @db.Timestamptz(3)
+  id                     String               @id @default(cuid())
+  name                   String               @db.VarChar(120)
+  slug                   String               @unique @db.VarChar(160)
+  createdById            String               @map("created_by")
+  createdAt              DateTime             @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt              DateTime             @updatedAt @map("updated_at") @db.Timestamptz(3)
   /// Privy server wallet that holds the organization's stablecoin treasury.
   treasuryWalletId       String?              @unique @map("treasury_wallet_id") @db.VarChar(64)
   treasuryAddress        String?              @map("treasury_address") @db.VarChar(64)
   /// Privy policy restricting the treasury to escrow funding on Sepolia.
   treasuryPolicyId       String?              @map("treasury_policy_id") @db.VarChar(64)
+  /// The escrow the current policy allows. A new escrow deployment needs a
+  /// new policy, or Privy would refuse to fund it.
+  treasuryPolicyEscrow   String?              @map("treasury_policy_escrow") @db.VarChar(42)
   /// Funding above this amount (minor units) needs a second member's approval.
   approvalThresholdMinor BigInt?              @map("approval_threshold_minor")
-  creator     User                 @relation("OrganizationCreator", fields: [createdById], references: [id], onDelete: Restrict)
-  members     OrganizationMember[]
-  campaigns   Campaign[]
-  chainTransactions ChainTransaction[]
-  fundingRequests   FundingRequest[]
+  creator                User                 @relation("OrganizationCreator", fields: [createdById], references: [id], onDelete: Restrict)
+  members                OrganizationMember[]
+  campaigns              Campaign[]
+  chainTransactions      ChainTransaction[]
+  fundingRequests        FundingRequest[]
 
   @@index([createdById])
   @@map("organizations")
@@ -244,60 +262,64 @@ model Location {
 }
 
 model Campaign {
-  id               String              @id @default(cuid())
-  organizationId   String              @map("organization_id")
-  name             String              @db.VarChar(160)
-  briefText        String              @map("brief_text") @db.Text
-  status           CampaignStatus      @default(DRAFT)
-  wizardStep       CampaignWizardStep  @default(BRIEF) @map("wizard_step")
-  currency         String              @default("USD") @db.VarChar(12)
+  id             String             @id @default(cuid())
+  organizationId String             @map("organization_id")
+  name           String             @db.VarChar(160)
+  briefText      String             @map("brief_text") @db.Text
+  status         CampaignStatus     @default(DRAFT)
+  wizardStep     CampaignWizardStep @default(BRIEF) @map("wizard_step")
+  currency       String             @default("USD") @db.VarChar(12)
 
   // Draft-completable fields. Nullable so the wizard can save after every step;
   // completeness is enforced at the DRAFT -> QUOTED transition, not by the database.
-  placementCount   Int?                @map("placement_count")
-  budgetLimitMinor BigInt?             @map("budget_limit_minor")
-  destinationUrl   String?             @map("destination_url") @db.Text
-  deadline         DateTime?           @db.Timestamptz(3)
+  placementCount   Int?      @map("placement_count")
+  budgetLimitMinor BigInt?   @map("budget_limit_minor")
+  destinationUrl   String?   @map("destination_url") @db.Text
+  deadline         DateTime? @db.Timestamptz(3)
 
   // Structured geography. `areaLabel` is a generated human label and is never
   // read as source of truth.
-  areaLabel        String?             @map("area_label") @db.VarChar(240)
-  countryCode      String?             @map("country_code") @db.VarChar(2)
-  countryName      String?             @map("country_name") @db.VarChar(120)
-  city             String?             @db.VarChar(160)
-  centerLatitude   Float?              @map("center_latitude")
-  centerLongitude  Float?              @map("center_longitude")
-  radiusMeters     Int?                @map("radius_meters")
-  locationStrategy LocationStrategy?   @map("location_strategy")
+  areaLabel        String?           @map("area_label") @db.VarChar(240)
+  countryCode      String?           @map("country_code") @db.VarChar(2)
+  countryName      String?           @map("country_name") @db.VarChar(120)
+  city             String?           @db.VarChar(160)
+  centerLatitude   Float?            @map("center_latitude")
+  centerLongitude  Float?            @map("center_longitude")
+  radiusMeters     Int?              @map("radius_meters")
+  locationStrategy LocationStrategy? @map("location_strategy")
 
-  artworkUrl       String?             @map("artwork_url") @db.Text
-  artworkHash      String?             @map("artwork_hash") @db.VarChar(128)
+  /// The printed asset tier. Multiplies per-placement fulfilment costs.
+  assetType AssetType @default(QR_NORMAL) @map("asset_type")
+
+  artworkUrl  String? @map("artwork_url") @db.Text
+  artworkHash String? @map("artwork_hash") @db.VarChar(128)
 
   /// Set by the Phase 2 mocked funding action. Replaced by onchain escrow in Phase 4.
-  fundedAt         DateTime?           @map("funded_at") @db.Timestamptz(3)
-  fundingReference String?             @map("funding_reference") @db.VarChar(120)
+  fundedAt         DateTime? @map("funded_at") @db.Timestamptz(3)
+  fundingReference String?   @map("funding_reference") @db.VarChar(120)
 
   /// keccak256 key of this campaign inside CampaignEscrow.
-  escrowCampaignId  String?            @unique @map("escrow_campaign_id") @db.VarChar(66)
-  escrowAddress     String?            @map("escrow_address") @db.VarChar(42)
+  escrowCampaignId  String? @unique @map("escrow_campaign_id") @db.VarChar(66)
+  escrowAddress     String? @map("escrow_address") @db.VarChar(42)
   /// Amount deposited into escrow, in USD minor units.
-  fundedAmountMinor BigInt?            @map("funded_amount_minor")
+  fundedAmountMinor BigInt? @map("funded_amount_minor")
 
-  createdById      String              @map("created_by")
-  createdAt        DateTime            @default(now()) @map("created_at") @db.Timestamptz(3)
-  updatedAt        DateTime            @updatedAt @map("updated_at") @db.Timestamptz(3)
+  createdById String   @map("created_by")
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt   DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
 
-  organization     Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  creator          User                @relation("CampaignCreator", fields: [createdById], references: [id], onDelete: Restrict)
-  areas            CampaignArea[]
-  locations        CampaignLocation[]
-  quotes           CampaignQuote[]
-  assets           CampaignAsset[]
-  scanEvents       ScanEvent[]
-  placements       Placement[]
-  jobs             Job[]
+  organization      Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  creator           User               @relation("CampaignCreator", fields: [createdById], references: [id], onDelete: Restrict)
+  areas             CampaignArea[]
+  locations         CampaignLocation[]
+  quotes            CampaignQuote[]
+  assets            CampaignAsset[]
+  scanEvents        ScanEvent[]
+  conversionEvents  ConversionEvent[]
+  placements        Placement[]
+  jobs              Job[]
   chainTransactions ChainTransaction[]
-  fundingRequests  FundingRequest[]
+  fundingRequests   FundingRequest[]
 
   @@index([organizationId, updatedAt(sort: Desc)])
   @@index([createdById])
@@ -388,6 +410,7 @@ model CampaignAsset {
   campaign         Campaign            @relation(fields: [campaignId], references: [id], onDelete: Cascade)
   location         Location?           @relation(fields: [locationId], references: [id], onDelete: SetNull)
   scanEvents       ScanEvent[]
+  conversionEvents ConversionEvent[]
   placement        Placement?
 
   @@unique([campaignId, sequence])
@@ -399,17 +422,18 @@ model CampaignAsset {
 /// Privacy-safe attribution for a public QR scan.
 /// Never stores public visitor identity and never triggers a worker payout.
 model ScanEvent {
-  id             String        @id @default(cuid())
-  assetId        String        @map("asset_id")
-  campaignId     String        @map("campaign_id")
-  referrer       String?       @db.Text
-  userAgentHash  String?       @map("user_agent_hash") @db.VarChar(64)
-  sessionHash    String?       @map("session_hash") @db.VarChar(64)
-  coarseRegion   String?       @map("coarse_region") @db.VarChar(120)
-  isSuspectedBot Boolean       @default(false) @map("is_suspected_bot")
-  createdAt      DateTime      @default(now()) @map("created_at") @db.Timestamptz(3)
-  asset          CampaignAsset @relation(fields: [assetId], references: [id], onDelete: Cascade)
-  campaign       Campaign      @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  id             String            @id @default(cuid())
+  assetId        String            @map("asset_id")
+  campaignId     String            @map("campaign_id")
+  referrer       String?           @db.Text
+  userAgentHash  String?           @map("user_agent_hash") @db.VarChar(64)
+  sessionHash    String?           @map("session_hash") @db.VarChar(64)
+  coarseRegion   String?           @map("coarse_region") @db.VarChar(120)
+  isSuspectedBot Boolean           @default(false) @map("is_suspected_bot")
+  createdAt      DateTime          @default(now()) @map("created_at") @db.Timestamptz(3)
+  asset          CampaignAsset     @relation(fields: [assetId], references: [id], onDelete: Cascade)
+  campaign       Campaign          @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  conversions    ConversionEvent[]
 
   @@index([campaignId, createdAt(sort: Desc)])
   @@index([assetId, createdAt(sort: Desc)])
@@ -417,34 +441,69 @@ model ScanEvent {
   @@map("scan_events")
 }
 
+/// What happened after a scan, reported by the brand's own site.
+///
+/// Each row is tied to the scan that caused it, so a signup is attributable to
+/// one physical poster. The name is the brand's own label, except "landing"
+/// which the StickerBomb snippet fires on page load; that is the only way to
+/// tell a scan apart from an actual arrival on the site.
+model ConversionEvent {
+  id          String        @id @default(cuid())
+  scanEventId String        @map("scan_event_id")
+  assetId     String        @map("asset_id")
+  campaignId  String        @map("campaign_id")
+  name        String        @db.VarChar(60)
+  valueMinor  BigInt?       @map("value_minor")
+  currency    String?       @db.VarChar(3)
+  createdAt   DateTime      @default(now()) @map("created_at") @db.Timestamptz(3)
+  scanEvent   ScanEvent     @relation(fields: [scanEventId], references: [id], onDelete: Cascade)
+  asset       CampaignAsset @relation(fields: [assetId], references: [id], onDelete: Cascade)
+  campaign    Campaign      @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+
+  /// One row per scan per event name, so a refreshed page cannot inflate counts.
+  @@unique([scanEventId, name])
+  @@index([campaignId, createdAt(sort: Desc)])
+  @@index([assetId, createdAt(sort: Desc)])
+  @@map("conversion_events")
+}
+
 /// One physical asset at one approved location, from installation to removal.
 ///
-/// The installer and verifier must be different people. That rule is enforced
-/// by the job service and by a CHECK constraint in the migration.
+/// Under INDEPENDENT verification the installer and verifier must be different
+/// people, enforced by the job service and by a CHECK constraint in the
+/// migration. Under SELF verification no separate verifier is assigned at all,
+/// so `verifierUserId` stays null and that constraint is simply not engaged;
+/// the escrow is given the installer's wallet for both roles instead.
 model Placement {
-  id                 String          @id @default(cuid())
-  campaignId         String          @map("campaign_id")
-  assetId            String          @unique @map("asset_id")
-  locationId         String          @map("location_id")
-  status             PlacementStatus @default(AWAITING_INSTALL)
-  installerUserId    String?         @map("installer_user_id")
-  verifierUserId     String?         @map("verifier_user_id")
+  id                 String             @id @default(cuid())
+  campaignId         String             @map("campaign_id")
+  assetId            String             @unique @map("asset_id")
+  locationId         String             @map("location_id")
+  status             PlacementStatus    @default(AWAITING_INSTALL)
+  installerUserId    String?            @map("installer_user_id")
+  verifierUserId     String?            @map("verifier_user_id")
   /// Set in Phase 4 when the placement is registered with CampaignEscrow.
-  onchainPlacementId String?         @map("onchain_placement_id") @db.VarChar(80)
-  installedAt        DateTime?       @map("installed_at") @db.Timestamptz(3)
-  verifiedAt         DateTime?       @map("verified_at") @db.Timestamptz(3)
-  removedAt          DateTime?       @map("removed_at") @db.Timestamptz(3)
-  createdAt          DateTime        @default(now()) @map("created_at") @db.Timestamptz(3)
-  updatedAt          DateTime        @updatedAt @map("updated_at") @db.Timestamptz(3)
-  campaign           Campaign        @relation(fields: [campaignId], references: [id], onDelete: Cascade)
-  asset              CampaignAsset   @relation(fields: [assetId], references: [id], onDelete: Cascade)
-  location           Location        @relation(fields: [locationId], references: [id], onDelete: Restrict)
-  installer          User?           @relation("PlacementInstaller", fields: [installerUserId], references: [id], onDelete: Restrict)
-  verifier           User?           @relation("PlacementVerifier", fields: [verifierUserId], references: [id], onDelete: Restrict)
+  onchainPlacementId String?            @map("onchain_placement_id") @db.VarChar(80)
+  installedAt        DateTime?          @map("installed_at") @db.Timestamptz(3)
+  verifiedAt         DateTime?          @map("verified_at") @db.Timestamptz(3)
+  removedAt          DateTime?          @map("removed_at") @db.Timestamptz(3)
+  createdAt          DateTime           @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt          DateTime           @updatedAt @map("updated_at") @db.Timestamptz(3)
+  campaign           Campaign           @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  asset              CampaignAsset      @relation(fields: [assetId], references: [id], onDelete: Cascade)
+  location           Location           @relation(fields: [locationId], references: [id], onDelete: Restrict)
+  installer          User?              @relation("PlacementInstaller", fields: [installerUserId], references: [id], onDelete: Restrict)
+  verifier           User?              @relation("PlacementVerifier", fields: [verifierUserId], references: [id], onDelete: Restrict)
+  /// SELF: the installer's own proof, judged by the confidential CRE check
+  /// (location trail, poster code, photo). INDEPENDENT: a second worker
+  /// checks, used for randomly sampled spot checks.
+  verificationMode   VerificationMode   @default(SELF) @map("verification_mode")
+  spotCheckRequired  Boolean            @default(false) @map("spot_check_required")
   jobs               Job[]
   evidence           Evidence[]
   chainTransactions  ChainTransaction[]
   verificationRuns   VerificationRun[]
+  locationPings      LocationPing[]
 
   @@index([campaignId])
   @@index([locationId])
@@ -455,27 +514,28 @@ model Placement {
 /// Paid physical work on a placement. At most one job per role per placement;
 /// a rejected proof is recaptured on the same job rather than opening another.
 model Job {
-  id            String    @id @default(cuid())
-  placementId   String    @map("placement_id")
-  campaignId    String    @map("campaign_id")
+  id            String         @id @default(cuid())
+  placementId   String         @map("placement_id")
+  campaignId    String         @map("campaign_id")
   role          JobRole
-  status        JobStatus @default(OPEN)
-  rewardMinor   BigInt    @map("reward_minor")
-  currency      String    @default("USD") @db.VarChar(12)
-  workerUserId  String?   @map("worker_user_id")
-  reservedUntil DateTime? @map("reserved_until") @db.Timestamptz(3)
-  acceptedAt    DateTime? @map("accepted_at") @db.Timestamptz(3)
-  startedAt     DateTime? @map("started_at") @db.Timestamptz(3)
-  submittedAt   DateTime? @map("submitted_at") @db.Timestamptz(3)
-  resolvedAt    DateTime? @map("resolved_at") @db.Timestamptz(3)
-  paidAt        DateTime? @map("paid_at") @db.Timestamptz(3)
-  expiresAt     DateTime? @map("expires_at") @db.Timestamptz(3)
-  createdAt     DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
-  updatedAt     DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
-  placement     Placement @relation(fields: [placementId], references: [id], onDelete: Cascade)
-  campaign      Campaign  @relation(fields: [campaignId], references: [id], onDelete: Cascade)
-  worker        User?     @relation("JobWorker", fields: [workerUserId], references: [id], onDelete: Restrict)
+  status        JobStatus      @default(OPEN)
+  rewardMinor   BigInt         @map("reward_minor")
+  currency      String         @default("USD") @db.VarChar(12)
+  workerUserId  String?        @map("worker_user_id")
+  reservedUntil DateTime?      @map("reserved_until") @db.Timestamptz(3)
+  acceptedAt    DateTime?      @map("accepted_at") @db.Timestamptz(3)
+  startedAt     DateTime?      @map("started_at") @db.Timestamptz(3)
+  submittedAt   DateTime?      @map("submitted_at") @db.Timestamptz(3)
+  resolvedAt    DateTime?      @map("resolved_at") @db.Timestamptz(3)
+  paidAt        DateTime?      @map("paid_at") @db.Timestamptz(3)
+  expiresAt     DateTime?      @map("expires_at") @db.Timestamptz(3)
+  createdAt     DateTime       @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt     DateTime       @updatedAt @map("updated_at") @db.Timestamptz(3)
+  placement     Placement      @relation(fields: [placementId], references: [id], onDelete: Cascade)
+  campaign      Campaign       @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  worker        User?          @relation("JobWorker", fields: [workerUserId], references: [id], onDelete: Restrict)
   evidence      Evidence[]
+  locationPings LocationPing[]
 
   @@unique([placementId, role])
   @@index([campaignId])
@@ -610,4 +670,25 @@ model VerificationRun {
 
   @@index([placementId, createdAt(sort: Desc)])
   @@map("verification_runs")
+}
+
+/// A worker's live position while holding a job, sent by the Worker PWA every
+/// few seconds. The full trail is read only by the confidential CRE check;
+/// brands see just the latest position of an active job.
+model LocationPing {
+  id             String    @id @default(cuid())
+  placementId    String    @map("placement_id")
+  jobId          String    @map("job_id")
+  workerUserId   String    @map("worker_user_id")
+  latitude       Float
+  longitude      Float
+  accuracyMeters Float?    @map("accuracy_meters")
+  recordedAt     DateTime  @default(now()) @map("recorded_at") @db.Timestamptz(3)
+  placement      Placement @relation(fields: [placementId], references: [id], onDelete: Cascade)
+  job            Job       @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  worker         User      @relation(fields: [workerUserId], references: [id], onDelete: Cascade)
+
+  @@index([jobId, recordedAt])
+  @@index([placementId, recordedAt(sort: Desc)])
+  @@map("location_pings")
 }

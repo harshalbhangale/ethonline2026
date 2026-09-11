@@ -5,9 +5,9 @@ export type Job = WorkerTaskDto;
 export const statusLabel: Record<WorkerTaskStatusValue, string> = {
   OPEN: "Open",
   ACCEPTED: "In progress",
-  AWAITING_CHECK: "Waiting to be checked",
+  AWAITING_CHECK: "Picked for a spot check",
   CHECK_ACCEPTED: "Check in progress",
-  IN_REVIEW: "Confidential check running",
+  IN_REVIEW: "Being verified by Chainlink",
   NEEDS_RECAPTURE: "Needs a new photo",
   VERIFIED: "Verified and paid",
   REJECTED: "Rejected",
@@ -28,6 +28,21 @@ const rejectionText: Record<string, string> = {
 export function describeRejection(reason: string) {
   const code = reason.split(":").find((part) => part in rejectionText);
   return code ? `Rejected: ${rejectionText[code]}.` : "Your last photo was rejected.";
+}
+
+/** What to do next about each error the proof endpoint can refuse with. */
+const submissionHelp: Record<string, string> = {
+  PHOTO_REQUIRED: "Take a photo of the poster where you put it up.",
+  POSTER_CODE_REQUIRED:
+    "Scan the QR on the poster, or type the code printed under it.",
+  WRONG_POSTER:
+    "That code belongs to a different poster. Check you are at the right one.",
+  OUTSIDE_GEOFENCE: "Move closer to the approved surface, then submit again.",
+  NOT_YOUR_JOB: "This job is no longer waiting for your photo.",
+};
+
+export function describeSubmissionError(code: string | undefined) {
+  return code ? submissionHelp[code] ?? null : null;
 }
 
 export function formatMoney(minor: string, currency: string) {

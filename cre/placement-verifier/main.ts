@@ -21,7 +21,12 @@ import {
   toBytes,
   type Hex,
 } from "viem";
-import { evaluatePlacement, type EvidenceBundle, type Verdict } from "./checks";
+import {
+  evaluatePlacement,
+  isSpotCheckSelected,
+  type EvidenceBundle,
+  type Verdict,
+} from "./checks";
 
 /**
  * StickerBomb confidential placement verifier.
@@ -44,6 +49,12 @@ import { evaluatePlacement, type EvidenceBundle, type Verdict } from "./checks";
 type Config = {
   evidence_api_url: string;
   challenge_grace_seconds: number;
+  /** Minimum time a self-verifying worker must be seen on site. */
+  min_dwell_seconds?: number;
+  /** Share of self-verified placements drawn for an independent check. */
+  spot_check_percent?: number;
+  /** Relaxed checking for demonstrations. See CheckOptions.lenient. */
+  lenient?: boolean;
   secrets_ids: {
     evidence_api_key_id: string;
     geofence_salt_id: string;
@@ -59,6 +70,8 @@ type VerificationResult = Verdict & {
   placementId: string;
   onchainPlacementId: string;
   evidenceHash: string;
+  /** Drawn for an independent check: nothing is paid until it passes. */
+  spotCheck: boolean;
   txHash?: string;
 };
 
@@ -186,32 +199,57 @@ export const onVerificationRequest = async (
   ) as unknown as EvidenceBundle;
   runtime.log("placement-verifier evidence bundle received (contents stay in enclave)");
 
-  const verdict = evaluatePlacement(bundle, challenge_grace_seconds);
+  const verdict = evaluatePlacement(bundle, {
+    graceSeconds: challenge_grace_seconds,
+    ...(runtime.config.min_dwell_seconds !== undefined
+      ? { minDwellSeconds: runtime.config.min_dwell_seconds }
+      : {}),
+    ...(runtime.config.lenient !== undefined
+      ? { lenient: runtime.config.lenient }
+      : {}),
+  });
   const evidenceHash = commitEvidence(bundle, salt);
+
+  // Sampling uses the secret salt, so a worker cannot know in advance which of
+  // their self-verified placements will get a second person.
+  const spotCheck =
+    verdict.approved &&
+    bundle.mode === "SELF" &&
+    isSpotCheckSelected(
+      keccak256(toBytes(`${salt}|spot-check|${bundle.onchainPlacementId}`)),
+      runtime.config.spot_check_percent ?? 0,
+    );
+
   runtime.log(
-    `placement-verifier verdict approved=${verdict.approved} reasons=${verdict.reasons.join(",") || "none"}`,
+    `placement-verifier verdict approved=${verdict.approved} mode=${bundle.mode} spotCheck=${spotCheck} reasons=${verdict.reasons.join(",") || "none"}`,
   );
 
   const result: VerificationResult = {
     placementId,
     onchainPlacementId: bundle.onchainPlacementId,
     evidenceHash,
+    spotCheck,
     ...verdict,
   };
 
-  result.txHash = writeVerdictOnchain(
-    runtime,
-    bundle.onchainPlacementId as Hex,
-    verdict,
-    evidenceHash,
-  );
-  runtime.log(`placement-verifier report written tx=${result.txHash}`);
+  // A spot check pays nobody yet: the escrow is only told once the
+  // independent check has passed too.
+  if (!spotCheck) {
+    result.txHash = writeVerdictOnchain(
+      runtime,
+      bundle.onchainPlacementId as Hex,
+      verdict,
+      evidenceHash,
+    );
+    runtime.log(`placement-verifier report written tx=${result.txHash}`);
+  }
 
   requestJson(runtime, http, `${evidence_api_url}/${placementId}/verdict`, apiKey, {
     approved: result.approved,
     reasons: result.reasons,
     evidenceHash: result.evidenceHash,
-    txHash: result.txHash,
+    spotCheck: result.spotCheck,
+    ...(result.txHash ? { txHash: result.txHash } : {}),
   });
 
   return JSON.stringify(result);
@@ -257,6 +295,8 @@ export const buildRestrictions = (config: Config) => {
 const PREHOOK_DEFAULT_CONFIG: Config = {
   evidence_api_url: "prehook-default",
   challenge_grace_seconds: 30,
+  min_dwell_seconds: 30,
+  spot_check_percent: 0,
   secrets_ids: {
     evidence_api_key_id: "evidence_api_key",
     geofence_salt_id: "geofence_salt",

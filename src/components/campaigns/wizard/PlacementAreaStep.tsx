@@ -11,13 +11,18 @@ import {
   ClientApiError,
 } from "@/lib/api/authenticated-fetch";
 import { formatCampaignBudget } from "@/lib/campaigns/format";
-import { formatRadius } from "@/lib/campaigns/geo";
+import { formatRadius, radiusChoices } from "@/lib/campaigns/geo";
 import { isMapConfigured } from "@/lib/campaigns/mapbox";
 import {
   estimateDeploymentMinutes,
   estimateLocalFulfilmentMinor,
 } from "@/lib/campaigns/pricing";
-import type { CampaignDto, LocationStrategyValue } from "@/lib/campaigns/types";
+import {
+  assetTypeOptions,
+  type AssetTypeValue,
+  type CampaignDto,
+  type LocationStrategyValue,
+} from "@/lib/campaigns/types";
 import type { AvailableLocationsResponse } from "@/lib/locations/types";
 
 const MapboxGlobe = dynamic(
@@ -39,7 +44,8 @@ const CampaignRadius = dynamic(
   { ssr: false },
 );
 
-const radiusChoices = [500, 1_000, 1_500, 3_000, 5_000];
+// Shared with the server so a suggested radius is always a value offered here.
+
 const maxAreas = 6;
 
 type DraftArea = {
@@ -57,14 +63,17 @@ export default function PlacementAreaStep({
   campaign,
   submitting,
   onContinue,
+  onChangeCity,
 }: {
   campaign: CampaignDto;
   submitting: boolean;
   onContinue: (input: {
     areas: DraftArea[];
     strategy: LocationStrategyValue;
+    assetType: AssetTypeValue;
     locationIds: string[];
   }) => Promise<void>;
+  onChangeCity: () => void;
 }) {
   const { getAccessToken } = usePrivy();
 
@@ -84,6 +93,9 @@ export default function PlacementAreaStep({
   const [addingArea, setAddingArea] = useState(false);
   const [strategy, setStrategy] = useState<LocationStrategyValue>(
     campaign.locationStrategy ?? "AUTO_APPROVED",
+  );
+  const [assetType, setAssetType] = useState<AssetTypeValue>(
+    campaign.assetType ?? "QR_NORMAL",
   );
   const [manualIds, setManualIds] = useState<Set<string>>(new Set());
   const [availability, setAvailability] =
@@ -198,7 +210,7 @@ export default function PlacementAreaStep({
       ? Math.min(requested || availableCount, availableCount)
       : manualIds.size;
 
-  const fulfilmentMinor = estimateLocalFulfilmentMinor(selectedCount);
+  const fulfilmentMinor = estimateLocalFulfilmentMinor(selectedCount, assetType);
   const deploymentMinutes = estimateDeploymentMinutes(selectedCount);
   const shortfall = requested > 0 && availableCount < requested;
   const canContinue =
@@ -255,6 +267,7 @@ export default function PlacementAreaStep({
       await onContinue({
         areas,
         strategy,
+        assetType,
         locationIds: strategy === "MANUAL_SELECTION" ? [...manualIds] : [],
       });
     } catch (caught) {
@@ -266,13 +279,33 @@ export default function PlacementAreaStep({
     }
   }
 
-  if (areas.length === 0 && campaign.centerLatitude === null) {
+  if (areas.length === 0) {
+    // campaign.centerLatitude is always set by the time this step is
+    // reachable (saveLocation writes it in the same request as
+    // wizardStep: "PLACEMENTS"), so the only real way to see this is
+    // deleting every area after adding one — not a missing city.
+    const cityAlreadyChosen = campaign.centerLatitude !== null;
     return (
       <Card className="px-6 py-10 text-center">
-        <h2 className="text-[18px] font-bold">Choose a location first</h2>
+        <h2 className="text-[18px] font-bold">
+          {cityAlreadyChosen ? "No areas yet" : "Pick a city first"}
+        </h2>
         <p className="mt-2 text-[13.5px] text-muted">
-          Go back one step and pick the city this campaign should run in.
+          {cityAlreadyChosen
+            ? `Add at least one area in ${campaign.city ?? "this city"} to continue.`
+            : "Choose the city this campaign runs in, then set the area."}
         </p>
+        <button
+          type="button"
+          onClick={
+            cityAlreadyChosen
+              ? () => addAreaAt({ latitude: campaign.centerLatitude!, longitude: campaign.centerLongitude! })
+              : onChangeCity
+          }
+          className="mt-5 h-10 rounded-xl bg-solid px-4 text-[13px] font-semibold text-solid-ink"
+        >
+          {cityAlreadyChosen ? "Add an area" : "Choose a city"}
+        </button>
       </Card>
     );
   }
@@ -284,7 +317,14 @@ export default function PlacementAreaStep({
       <div>
         <div className="flex items-baseline justify-between gap-2">
           <h2 className="text-[15px] font-bold tracking-[-0.01em]">
-            Areas in {campaign.city}
+            Areas in {campaign.city}{" "}
+            <button
+              type="button"
+              onClick={onChangeCity}
+              className="ml-1 text-[12px] font-semibold text-badge hover:underline"
+            >
+              Change city
+            </button>
           </h2>
           <span className="text-[11.5px] text-faint">
             {areas.length} of {maxAreas}
@@ -383,6 +423,42 @@ export default function PlacementAreaStep({
             ? "Click the map to place it"
             : "+ Add another area"}
       </button>
+
+      <fieldset className="mt-4 border-t border-line pt-3.5">
+        <legend className="text-[12px] font-semibold text-muted">
+          Asset type
+        </legend>
+        <div className="mt-2 grid grid-cols-2 gap-1.5">
+          {assetTypeOptions.map((option) => (
+            <label
+              key={option.value}
+              title={option.description}
+              className={`flex cursor-pointer flex-col gap-0.5 rounded-xl border px-3 py-2 transition-colors ${
+                assetType === option.value
+                  ? "border-badge bg-raised"
+                  : "border-line hover:border-muted"
+              }`}
+            >
+              <span className="flex items-center justify-between gap-2">
+                <span className="text-[13px] font-semibold">
+                  {option.emoji} {option.label}
+                </span>
+                <input
+                  type="radio"
+                  name="asset-type"
+                  className="sr-only"
+                  value={option.value}
+                  checked={assetType === option.value}
+                  onChange={() => setAssetType(option.value)}
+                />
+              </span>
+              <span className="text-[11px] font-semibold text-faint">
+                {option.priceLabel} price
+              </span>
+            </label>
+          ))}
+        </div>
+      </fieldset>
 
       <fieldset className="mt-4 border-t border-line pt-3.5">
         <legend className="text-[12px] font-semibold text-muted">
