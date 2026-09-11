@@ -6,6 +6,7 @@ import {
   findAvailableLocations,
   findAvailableLocationsForAreas,
 } from "@/lib/locations/service";
+import { timed } from "@/lib/perf";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -68,20 +69,25 @@ export async function GET(request: Request) {
  * area list does not belong in a query string. It reads only.
  */
 export async function POST(request: Request) {
+  const startedAt = Date.now();
   try {
-    const context = await requireBrandContext(request);
+    const context = await timed("available.POST requireBrandContext", () =>
+      requireBrandContext(request),
+    );
     const input = areasSchema.parse(await readJsonBody(request));
 
     if (input.campaignId) {
-      await getCampaign(context, input.campaignId);
+      await timed("available.POST getCampaign", () => getCampaign(context, input.campaignId!));
     }
 
-    return Response.json(
-      await findAvailableLocationsForAreas({
+    const result = await timed("available.POST findAvailableLocationsForAreas", () =>
+      findAvailableLocationsForAreas({
         areas: input.areas,
         campaignId: input.campaignId ?? null,
       }),
     );
+    console.log(`[timing] available.POST total ${Date.now() - startedAt}ms`);
+    return Response.json(result);
   } catch (error) {
     return apiErrorResponse(error);
   }

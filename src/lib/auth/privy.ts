@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import { PrivyClient } from "@privy-io/node";
 import { ApiError } from "@/lib/http/api-error";
+import { timed } from "@/lib/perf";
 
 let privyClient: PrivyClient | undefined;
 
@@ -99,7 +100,9 @@ export async function verifyPrivyRequest(request: Request) {
   if (cached) return cached;
 
   try {
-    const claims = await getPrivyClient().utils().auth().verifyAccessToken(token);
+    const claims = await timed("privy.verifyAccessToken (cache miss)", () =>
+      getPrivyClient().utils().auth().verifyAccessToken(token),
+    );
     remember(key, claims);
     return claims;
   } catch (error) {

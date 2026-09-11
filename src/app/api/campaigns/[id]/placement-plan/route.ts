@@ -3,6 +3,7 @@ import { requireBrandContext } from "@/lib/auth/require-brand";
 import { getCampaign } from "@/lib/campaigns/service";
 import { apiErrorResponse, readJsonBody } from "@/lib/http/api-error";
 import { saveCampaignPlacementPlan } from "@/lib/locations/service";
+import { timed } from "@/lib/perf";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -30,16 +31,23 @@ const bodySchema = z.object({
 
 /** The wizard's placement step, saved in one request. */
 export async function POST(request: Request, { params }: RouteContext) {
+  const startedAt = Date.now();
   try {
-    const context = await requireBrandContext(request);
+    const context = await timed("placement-plan.POST requireBrandContext", () =>
+      requireBrandContext(request),
+    );
     const { id } = await params;
     const input = bodySchema.parse(await readJsonBody(request));
-    const { selectedLocationIds } = await saveCampaignPlacementPlan(context, id, input);
+    const { selectedLocationIds } = await timed(
+      "placement-plan.POST saveCampaignPlacementPlan",
+      () => saveCampaignPlacementPlan(context, id, input),
+    );
+    const campaign = await timed("placement-plan.POST getCampaign", () =>
+      getCampaign(context, id),
+    );
+    console.log(`[timing] placement-plan.POST total ${Date.now() - startedAt}ms`);
 
-    return Response.json({
-      campaign: await getCampaign(context, id),
-      selectedLocationIds,
-    });
+    return Response.json({ campaign, selectedLocationIds });
   } catch (error) {
     return apiErrorResponse(error);
   }
