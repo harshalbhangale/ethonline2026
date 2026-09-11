@@ -13,6 +13,18 @@ const nextConfig: NextConfig = {
   // deploy's own npm install actually fetched for its own platform.
   serverExternalPackages: ["sharp"],
 
+  // Being external is not enough on its own. sharp 0.35 picks its native
+  // binary with a dynamic require of `@img/sharp-<platform>`, which the file
+  // tracer cannot follow, so that package never made it into the serverless
+  // bundle and every route touching sharp still failed on Vercel. Whichever
+  // platform packages the deploy's install fetched are copied in here.
+  outputFileTracingIncludes: {
+    "/**": [
+      "./node_modules/@img/sharp-*/**/*",
+      "./node_modules/@img/sharp-libvips-*/**/*",
+    ],
+  },
+
   /**
    * `next dev` and `next build` share `.next` by default, and a production build
    * run while a dev server is live overwrites its chunks, causing
