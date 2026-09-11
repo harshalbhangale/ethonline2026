@@ -85,8 +85,9 @@ async function finishRun(runId: string, placementId: string, code: number | null
     await prisma.verificationRun.update({
       where: { id: runId },
       data: {
-        status:
-          code === 0 && txHash ? VerificationRunStatus.SUCCEEDED : VerificationRunStatus.FAILED,
+        // The onchain report is what settles money; a later failure (such as
+        // the verdict callback timing out) does not undo it.
+        status: txHash ? VerificationRunStatus.SUCCEEDED : VerificationRunStatus.FAILED,
         log: redact(output).slice(-LOG_LIMIT),
         finishedAt: new Date(),
         ...(txHash ? { txHash } : {}),

@@ -160,7 +160,12 @@ export async function recordVerdict(placementId: string, body: unknown) {
   }
 
   if (verdict.approved) {
-    await syncPlacementFromChain(placementId);
+    // Reply before reconciling: the enclave's HTTP calls time out after 10 s,
+    // and reading settlement from the chain can take longer. The runner also
+    // syncs when the workflow exits.
+    void syncPlacementFromChain(placementId).catch((error) => {
+      console.error("Settlement sync after verdict failed", error);
+    });
     return { ok: true };
   }
 
