@@ -46,17 +46,21 @@ export const placementSteps = [
 
 /** Label of the next demo-control step for a placement, if any. */
 export const demoStepLabels: Partial<Record<PlacementStatusValue, string>> = {
-  AWAITING_INSTALL: "Send demo installer",
-  INSTALLING: "Submit installer proof",
-  AWAITING_VERIFIER: "Send independent verifier",
-  VERIFYING: "Submit verifier proof",
-  READY_FOR_FINAL_VERIFICATION: "Run confidential verification",
+  AWAITING_INSTALL: "Send a worker",
+  INSTALLING: "Stick & verify on site",
+  AWAITING_VERIFIER: "Send a spot checker",
+  VERIFYING: "Confirm spot check",
+  READY_FOR_FINAL_VERIFICATION: "Run verification again",
   NEEDS_RECAPTURE: "Recapture proof",
 };
 
 const reasonLabels: Record<string, string> = {
   OUTSIDE_GEOFENCE: "captured outside the approved area",
   WRONG_QR: "scanned the wrong QR code",
+  NO_LOCATION_TRAIL: "shared no location on the way",
+  IMPOSSIBLE_TRAVEL: "jumped across the map too fast",
+  NEVER_ARRIVED: "was never seen at the venue",
+  TOO_SHORT_ON_SITE: "took the photo too soon after arriving",
   CHALLENGE_EXPIRED: "missed the challenge window",
   CHALLENGE_MISMATCH: "did not match the challenge",
   DUPLICATE_MEDIA: "reused media",

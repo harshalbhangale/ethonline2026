@@ -449,6 +449,9 @@ export default function CampaignWizard() {
           campaign={campaign}
           submitting={submitting}
           onContinue={(input) => savePlacementArea(input, campaign.id)}
+          // Choosing the city is the first half of this same stage, so this
+          // reads as changing a value rather than going back a step.
+          onChangeCity={() => goToStep("LOCATION", campaign.id)}
         />
       ) : null}
 

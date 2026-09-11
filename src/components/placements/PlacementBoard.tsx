@@ -206,7 +206,7 @@ function PlacementRow({
               }
               className="h-8 rounded-lg border border-fail/40 px-3 text-[12px] font-semibold text-fail hover:bg-fail/5 disabled:opacity-50"
             >
-              {demo.busy === `${placement.id}-bad` ? "Working…" : "Submit proof from the wrong place"}
+              {demo.busy === `${placement.id}-bad` ? "Working…" : "Stick & verify from the wrong place"}
             </button>
           ) : null}
           {needsCre && !demo.verificationAvailable ? (
@@ -377,7 +377,7 @@ export default function PlacementBoard({
   const demoControls =
     campaignId && demoMode ? (
       <div className="flex flex-wrap items-center gap-3 border-t border-dashed border-line px-5 py-4 sm:px-6">
-        <p className="text-[11px] font-bold uppercase tracking-[0.09em] text-faint">Demo controls · development only</p>
+        <p className="text-[11px] font-bold uppercase tracking-[0.09em] text-faint">Operator controls</p>
         <button
           type="button"
           disabled={demoBusy !== null}
@@ -385,6 +385,14 @@ export default function PlacementBoard({
           className="h-8 rounded-lg border border-line px-3 text-[12px] font-semibold hover:bg-raised disabled:opacity-50"
         >
           {demoBusy === "printing" ? "Working…" : "Mark printing complete"}
+        </button>
+        <button
+          type="button"
+          disabled={demoBusy !== null}
+          onClick={() => void runDemo({ action: "generate-activity" }, "activity")}
+          className="h-8 rounded-lg border border-line px-3 text-[12px] font-semibold hover:bg-raised disabled:opacity-50"
+        >
+          {demoBusy === "activity" ? "Working…" : "Sync scan activity"}
         </button>
         <span className="text-[11.5px] text-faint">Each placement has its own next step below.</span>
       </div>

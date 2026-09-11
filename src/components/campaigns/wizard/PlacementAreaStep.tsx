@@ -63,6 +63,7 @@ export default function PlacementAreaStep({
   campaign,
   submitting,
   onContinue,
+  onChangeCity,
 }: {
   campaign: CampaignDto;
   submitting: boolean;
@@ -72,6 +73,7 @@ export default function PlacementAreaStep({
     assetType: AssetTypeValue;
     locationIds: string[];
   }) => Promise<void>;
+  onChangeCity: () => void;
 }) {
   const { getAccessToken } = usePrivy();
 
@@ -280,10 +282,17 @@ export default function PlacementAreaStep({
   if (areas.length === 0 && campaign.centerLatitude === null) {
     return (
       <Card className="px-6 py-10 text-center">
-        <h2 className="text-[18px] font-bold">Choose a location first</h2>
+        <h2 className="text-[18px] font-bold">Pick a city first</h2>
         <p className="mt-2 text-[13.5px] text-muted">
-          Go back one step and pick the city this campaign should run in.
+          Choose the city this campaign runs in, then set the area.
         </p>
+        <button
+          type="button"
+          onClick={onChangeCity}
+          className="mt-5 h-10 rounded-xl bg-solid px-4 text-[13px] font-semibold text-solid-ink"
+        >
+          Choose a city
+        </button>
       </Card>
     );
   }
@@ -295,7 +304,14 @@ export default function PlacementAreaStep({
       <div>
         <div className="flex items-baseline justify-between gap-2">
           <h2 className="text-[15px] font-bold tracking-[-0.01em]">
-            Areas in {campaign.city}
+            Areas in {campaign.city}{" "}
+            <button
+              type="button"
+              onClick={onChangeCity}
+              className="ml-1 text-[12px] font-semibold text-badge hover:underline"
+            >
+              Change city
+            </button>
           </h2>
           <span className="text-[11.5px] text-faint">
             {areas.length} of {maxAreas}

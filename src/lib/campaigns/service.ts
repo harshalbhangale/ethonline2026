@@ -80,10 +80,45 @@ function toCampaignDto(campaign: Campaign): CampaignDto {
   };
 }
 
+/**
+ * A live campaign whose deadline has passed has finished its run. Settled
+ * lazily on read, so no scheduler is needed: the first look after the
+ * deadline is what completes it.
+ */
+async function completeEndedCampaigns(organizationId: string, campaignId?: string) {
+  await getPrismaClient().campaign.updateMany({
+    where: {
+      organizationId,
+      ...(campaignId ? { id: campaignId } : {}),
+      status: CampaignStatus.LIVE,
+      deadline: { lt: new Date() },
+    },
+    data: { status: CampaignStatus.COMPLETE },
+  });
+}
+
+/** The brand ends a live campaign early. Scans keep being counted. */
+export async function endCampaign(context: BrandContext, campaignId: string) {
+  const prisma = getPrismaClient();
+  const ended = await prisma.campaign.updateMany({
+    where: {
+      id: campaignId,
+      organizationId: context.organizationId,
+      status: { in: [CampaignStatus.LIVE, CampaignStatus.VERIFYING, CampaignStatus.DEPLOYING] },
+    },
+    data: { status: CampaignStatus.COMPLETE },
+  });
+  if (ended.count === 0) {
+    throw new ApiError(409, "CAMPAIGN_NOT_RUNNING", "Only a running campaign can be ended.");
+  }
+  return getCampaign(context, campaignId);
+}
+
 export async function listCampaigns(
   context: BrandContext,
 ): Promise<CampaignListResponse> {
   const prisma = getPrismaClient();
+  await completeEndedCampaigns(context.organizationId);
   const campaigns = await prisma.campaign.findMany({
     where: { organizationId: context.organizationId },
     orderBy: { updatedAt: "desc" },
@@ -136,6 +171,7 @@ export async function getCampaign(
   campaignId: string,
 ): Promise<CampaignDto> {
   const prisma = getPrismaClient();
+  await completeEndedCampaigns(context.organizationId, campaignId);
   const campaign = await prisma.campaign.findFirst({
     where: {
       id: campaignId,
