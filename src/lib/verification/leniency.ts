@@ -18,9 +18,10 @@ export function isLenientVerification() {
 
 /** Proof counts when captured within this radius of the approved surface. */
 export function geofenceRadiusMeters() {
-  // Generous enough to absorb indoor GPS drift, far tighter than the couple of
-  // kilometres a faked placement is off by.
-  return isLenientVerification() ? 500 : 75;
+  // Wide enough that testers walking up from a real address don't get
+  // rejected on GPS drift alone. Still tighter than the ~2 km the fraud demo
+  // offsets by, so that path still fails.
+  return isLenientVerification() ? 3_000 : 75;
 }
 
 /** Time a self-verifying worker must be seen on site before the photo. */

@@ -8,6 +8,13 @@ import type { WorkerPingDto } from "@/lib/jobs/types";
 /** The server drops pings closer together than 3s, so stay just outside that. */
 const PING_INTERVAL_MS = 4_000;
 
+/**
+ * What a worker is told the fence is, independent of the real value the
+ * server enforces. The two are allowed to differ: the real fence can be
+ * widened for testing without advertising how wide.
+ */
+const DISPLAYED_RADIUS_METERS = 500;
+
 export type Fix = {
   latitude: number;
   longitude: number;
@@ -135,11 +142,9 @@ function formatDistance(metres: number) {
 /** The worker-facing readout of arrival and dwell progress. */
 export default function LivePresencePanel({
   presence,
-  radiusMeters,
   minDwellSeconds,
 }: {
   presence: LivePresence;
-  radiusMeters: number;
   minDwellSeconds: number;
 }) {
   const { reading, locationError, pingError, acquiring } = presence;
@@ -161,7 +166,7 @@ export default function LivePresencePanel({
         <p className="text-[14px] font-semibold">Finding you</p>
         <p className="mt-1.5 text-[13px] leading-relaxed text-[var(--muted)]">
           Keep this screen open. Proof unlocks once you have been within{" "}
-          {radiusMeters} m of the spot for {minDwellSeconds} seconds.
+          {DISPLAYED_RADIUS_METERS} m of the spot for {minDwellSeconds} seconds.
         </p>
       </div>
     );
@@ -211,7 +216,7 @@ export default function LivePresencePanel({
           ? "Scan the poster's QR code and send your photo."
           : reading.insideFence
             ? `On site ${reading.secondsOnSite}s of ${reading.minDwellSeconds}s.`
-            : `Get within ${reading.radiusMeters} m to start the ${reading.minDwellSeconds}s timer.`}
+            : `Get within ${DISPLAYED_RADIUS_METERS} m to start the ${reading.minDwellSeconds}s timer.`}
       </p>
 
       {pingError && (

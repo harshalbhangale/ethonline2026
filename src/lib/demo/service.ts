@@ -76,7 +76,9 @@ async function submitProof(
 ) {
   const now = Date.now();
   const jitter = () => (Math.random() - 0.5) * 0.0002; // about ±11 m
-  const offset = fraudulent ? 0.02 : 0; // about 2.2 km
+  // Clear of the lenient geofence even at its widest (radius doubled for
+  // GPS accuracy, so up to 6 km) — the fraud demo has to stay outside it.
+  const offset = fraudulent ? 0.07 : 0; // about 7.7 km
   const symbol = randomChallenge();
 
   await recordProof(placement.id, role, worker.userId, {
@@ -101,7 +103,7 @@ async function recordTrail(
   fraudulent: boolean,
 ) {
   const now = Date.now();
-  const offset = fraudulent ? 0.02 : 0;
+  const offset = fraudulent ? 0.07 : 0;
   await getPrismaClient().locationPing.createMany({
     data: Array.from({ length: 12 }, (_, index) => ({
       placementId: placement.id,

@@ -20,6 +20,9 @@ import {
 
 type Fix = { latitude: number; longitude: number } | null;
 
+/** What the map's fence is drawn at — see LivePresence.DISPLAYED_RADIUS_METERS. */
+const DISPLAYED_RADIUS_METERS = 500;
+
 function actionErrorMessage(error: unknown) {
   if (!(error instanceof ClientApiError)) {
     return "Could not update this job. Please try again.";
@@ -278,7 +281,9 @@ export default function JobDetail({
             job.placementInstructions ??
             `${job.venueName} · exact spot after you accept`
           }
-          radiusMeters={owesProof ? job.geofenceRadiusMeters : undefined}
+          // The map fence is deliberately the advertised 500 m, not the
+          // real (possibly widened) enforcement radius — see LivePresence.
+          radiusMeters={owesProof ? DISPLAYED_RADIUS_METERS : undefined}
           fix={owesProof ? presence.fix : null}
         />
       </div>
@@ -323,7 +328,6 @@ export default function JobDetail({
         <>
           <LivePresencePanel
             presence={presence}
-            radiusMeters={job.geofenceRadiusMeters}
             minDwellSeconds={job.minDwellSeconds}
           />
           <PosterCodeField
@@ -399,7 +403,6 @@ export default function JobDetail({
           )}
           <LivePresencePanel
             presence={presence}
-            radiusMeters={job.geofenceRadiusMeters}
             minDwellSeconds={job.minDwellSeconds}
           />
           <PosterCodeField
