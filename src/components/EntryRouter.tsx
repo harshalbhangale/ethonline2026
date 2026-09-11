@@ -28,13 +28,7 @@ type EntryState = {
 
 function Mark() {
   return (
-    <svg viewBox="0 0 24 24" className="h-7 w-7" fill="none">
-      <rect x="3" y="3" width="18" height="18" rx="5" stroke="currentColor" strokeWidth="1.7" />
-      <rect x="6.5" y="6.5" width="4" height="4" rx="1" fill="currentColor" />
-      <rect x="13.5" y="6.5" width="4" height="4" rx="1" fill="currentColor" />
-      <rect x="6.5" y="13.5" width="4" height="4" rx="1" fill="currentColor" />
-      <rect x="13.5" y="13.5" width="4" height="4" rx="1" fill="currentColor" opacity="0.35" />
-    </svg>
+    <Image src="/logo_remove.png" alt="StickerBomb" width={70} height={70} className="h-25 w-25 object-contain" />
   );
 }
 
