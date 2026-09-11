@@ -2,6 +2,10 @@
 
 import { usePrivy } from "@privy-io/react-auth";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { AnimatePresence } from "motion/react";
+import FundingReceipt, {
+  type FundingReceiptData,
+} from "@/components/campaigns/wizard/FundingReceipt";
 import { Card } from "@/components/ui";
 import {
   authenticatedFetch,
@@ -61,6 +65,10 @@ export default function ReviewAndFundStep({
   const [error, setError] = useState<string | null>(null);
   const [missing, setMissing] = useState<string[]>([]);
   const [funding, setFunding] = useState(false);
+  // The receipt overlay opens as soon as funding starts and stays through the
+  // transaction; `receipt` fills in when it lands.
+  const [showReceipt, setShowReceipt] = useState(false);
+  const [receipt, setReceipt] = useState<FundingReceiptData | null>(null);
 
   const requestSequence = useRef(0);
   const requestController = useRef<AbortController | null>(null);
@@ -159,6 +167,8 @@ export default function ReviewAndFundStep({
     setFunding(true);
     setError(null);
     setNotice(null);
+    setReceipt(null);
+    setShowReceipt(true);
 
     try {
       const result = await authenticatedFetch<FundCampaignResult>(
@@ -168,6 +178,7 @@ export default function ReviewAndFundStep({
       );
 
       if (result.status === "PENDING_APPROVAL") {
+        setShowReceipt(false);
         setNotice(
           "This funding is above your approval threshold. A teammate can approve it on the Treasury page; the treasury pays as soon as they do.",
         );
@@ -175,8 +186,13 @@ export default function ReviewAndFundStep({
         return;
       }
 
-      onFunded();
+      setReceipt({
+        txHash: result.txHash,
+        fundingReference: result.fundingReference,
+        mocked: result.mocked,
+      });
     } catch (caught) {
+      setShowReceipt(false);
       setError(
         caught instanceof ClientApiError
           ? caught.message
@@ -419,6 +435,19 @@ export default function ReviewAndFundStep({
           </button>
         </div>
       </Card>
+      <AnimatePresence>
+        {showReceipt && quote ? (
+          <FundingReceipt
+            campaignName={campaign.name}
+            placements={quote.pricedPlacementCount}
+            quote={quote}
+            symbol={symbol}
+            onchain={onchain}
+            result={receipt}
+            onDone={onFunded}
+          />
+        ) : null}
+      </AnimatePresence>
     </div>
   );
 }

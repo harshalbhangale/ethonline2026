@@ -3,6 +3,7 @@
 import { usePrivy } from "@privy-io/react-auth";
 import Image from "next/image";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { MagneticDropZone } from "@/components/motion/MagneticDropZone";
 import { Card } from "@/components/ui";
 import {
   authenticatedFetch,
@@ -35,7 +36,6 @@ export default function CreativeStep({
   const [artworkUrl, setArtworkUrl] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
   const [artworkError, setArtworkError] = useState<string | null>(null);
-  const artworkInput = useRef<HTMLInputElement>(null);
 
   const requestSequence = useRef(0);
   const requestController = useRef<AbortController | null>(null);
@@ -283,52 +283,22 @@ export default function CreativeStep({
           )}
 
           <div className="mt-5 border-t border-line pt-5">
-            <input
-              ref={artworkInput}
-              type="file"
-              accept="image/jpeg,image/png,image/webp"
-              className="hidden"
-              onChange={(event) => {
-                const file = event.target.files?.[0];
-                event.target.value = "";
-                if (file) void uploadArtwork(file);
-              }}
-            />
-
-            <div className="flex flex-wrap items-start justify-between gap-4">
-              <div className="max-w-[52ch]">
-                <p className="text-[13.5px] font-semibold">Your image</p>
-                <p className="mt-1.5 text-[12.5px] leading-relaxed text-muted">
-                  Upload artwork and the QR is woven into it as a halftone, so
-                  the poster looks like your brand rather than a barcode. Every
-                  poster is still decoded before it can be printed, and falls
-                  back to the plain high-contrast version if it does not read.
-                </p>
-              </div>
-              <button
-                type="button"
-                disabled={uploading}
-                onClick={() => artworkInput.current?.click()}
-                className="h-10 shrink-0 rounded-xl border border-line px-4 text-[13px] font-semibold hover:bg-raised disabled:opacity-50"
-              >
-                {uploading
-                  ? "Uploading…"
-                  : artworkUrl
-                    ? "Replace image"
-                    : "Upload image"}
-              </button>
+            <div className="max-w-[60ch]">
+              <p className="text-[13.5px] font-semibold">Your image</p>
+              <p className="mt-1.5 text-[12.5px] leading-relaxed text-muted">
+                Upload artwork and the QR is woven into it as a halftone, so
+                the poster looks like your brand rather than a barcode. Every
+                poster is still decoded before it can be printed, and falls
+                back to the plain high-contrast version if it does not read.
+              </p>
             </div>
 
-            {artworkUrl ? (
-              <Image
-                src={artworkUrl}
-                alt="Campaign artwork"
-                width={280}
-                height={280}
-                unoptimized
-                className="mt-4 h-40 w-auto rounded-xl border border-line object-contain"
-              />
-            ) : null}
+            <MagneticDropZone
+              className="mt-4"
+              uploading={uploading}
+              previewUrl={artworkUrl}
+              onFile={(file) => void uploadArtwork(file)}
+            />
 
             {artworkError ? (
               <p className="mt-3 text-[12.5px] text-fail">{artworkError}</p>

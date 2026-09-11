@@ -1,6 +1,7 @@
 "use client";
 
 import { usePrivy } from "@privy-io/react-auth";
+import { AnimatePresence, motion } from "motion/react";
 import dynamic from "next/dynamic";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import ApprovedLocationPins from "@/components/campaigns/wizard/map/ApprovedLocationPins";
@@ -663,8 +664,16 @@ export default function WhereStep({
             </p>
           ) : (
             <ul className="mt-2 max-h-[220px] space-y-1 overflow-y-auto">
+              <AnimatePresence initial={false}>
               {selectedLocations.map((location) => (
-                <li key={location.id}>
+                <motion.li
+                  key={location.id}
+                  layout
+                  initial={{ opacity: 0, x: -8 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  exit={{ opacity: 0, x: 8, transition: { duration: 0.15 } }}
+                  transition={{ type: "spring", stiffness: 380, damping: 32 }}
+                >
                   <button
                     type="button"
                     disabled={strategy !== "MANUAL_SELECTION"}
@@ -685,8 +694,9 @@ export default function WhereStep({
                       {strategy === "MANUAL_SELECTION" ? "Remove" : `${location.distanceMetres} m`}
                     </span>
                   </button>
-                </li>
+                </motion.li>
               ))}
+              </AnimatePresence>
             </ul>
           )}
         </div>
@@ -759,7 +769,19 @@ export default function WhereStep({
 
   return (
     <div className="grid gap-5 lg:grid-cols-[380px_1fr]">
-      {phase === "city" ? cityPanel : areaPanel}
+      {/* The city panel hands over to the area panel in place, on the same map. */}
+      <AnimatePresence mode="wait" initial={false}>
+        <motion.div
+          key={phase}
+          className="h-full min-h-0"
+          initial={{ opacity: 0, y: 10, filter: "blur(4px)" }}
+          animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
+          exit={{ opacity: 0, y: -6, filter: "blur(4px)" }}
+          transition={{ duration: 0.24, ease: [0.23, 1, 0.32, 1] }}
+        >
+          {phase === "city" ? cityPanel : areaPanel}
+        </motion.div>
+      </AnimatePresence>
 
       <div className="relative h-[440px] overflow-hidden rounded-[20px] border border-line lg:h-[calc(min(100vh,960px)-300px)] lg:min-h-[440px]">
         <MapboxGlobe

@@ -2,6 +2,7 @@
 
 import { usePrivy } from "@privy-io/react-auth";
 import { useCallback, useEffect, useState } from "react";
+import { CountUp } from "@/components/motion/CountUp";
 import { Card } from "@/components/ui";
 import { authenticatedFetch } from "@/lib/api/authenticated-fetch";
 import type { LiveCampaignResponse } from "@/lib/placements/live";
@@ -77,11 +78,11 @@ export default function CampaignResults({
 
   const tiles = [
     { label: "Posters up", value: `${up} / ${data.placements.length}` },
-    { label: "Scans", value: totals.scans.toLocaleString() },
-    { label: "People", value: totals.people.toLocaleString() },
-    { label: "Landed", value: totals.landings.toLocaleString(), sub: rate(totals.landings, totals.people) },
-    { label: "Signed up", value: totals.conversions.toLocaleString(), sub: rate(totals.conversions, totals.landings) },
-  ];
+    { label: "Scans", value: totals.scans },
+    { label: "People", value: totals.people },
+    { label: "Landed", value: totals.landings, sub: rate(totals.landings, totals.people) },
+    { label: "Signed up", value: totals.conversions, sub: rate(totals.conversions, totals.landings) },
+  ] as { label: string; value: string | number; sub?: string }[];
 
   return (
     <Card className="overflow-hidden">
@@ -103,7 +104,9 @@ export default function CampaignResults({
         {tiles.map((tile) => (
           <div key={tile.label} className="bg-bg px-5 py-4">
             <p className="text-[11px] font-bold uppercase tracking-[0.09em] text-faint">{tile.label}</p>
-            <p className="mt-1 text-[22px] font-extrabold tracking-[-0.02em]">{tile.value}</p>
+            <p className="mt-1 text-[22px] font-extrabold tabular-nums tracking-[-0.02em]">
+              {typeof tile.value === "number" ? <CountUp value={tile.value} /> : tile.value}
+            </p>
             {tile.sub ? <p className="text-[11.5px] text-muted">{tile.sub} of the step before</p> : null}
           </div>
         ))}

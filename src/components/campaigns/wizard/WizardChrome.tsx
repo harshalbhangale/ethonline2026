@@ -2,7 +2,8 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, type ReactNode } from "react";
+import { AnimatePresence, motion, useReducedMotion } from "motion/react";
+import { useEffect, useRef, type ReactNode } from "react";
 import {
   stageFromStep,
   stageNumber,
@@ -48,7 +49,23 @@ export default function WizardChrome({
   const router = useRouter();
   const current = stageNumber(step);
   const total = wizardStages.length;
-  const { title, sub } = wizardStageTitles[stageFromStep(step)];
+  const stage = stageFromStep(step);
+  const { title, sub } = wizardStageTitles[stage];
+  const reduce = useReducedMotion();
+
+  // Which way the brand is travelling, so a step slides in from the side it
+  // came from: forward from the right, back from the left.
+  const previousStage = useRef(current);
+  const direction = current >= previousStage.current ? 1 : -1;
+  useEffect(() => {
+    previousStage.current = current;
+  }, [current]);
+  const distance = reduce ? 0 : 28;
+  const stepVariants = {
+    enter: (dir: number) => ({ opacity: 0, x: distance * dir }),
+    center: { opacity: 1, x: 0 },
+    exit: (dir: number) => ({ opacity: 0, x: -distance * dir }),
+  };
 
   // Lock the page behind the dialog and close it with Escape.
   useEffect(() => {
@@ -72,10 +89,13 @@ export default function WizardChrome({
       }}
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-2 backdrop-blur-sm sm:p-5"
     >
-      <div
+      <motion.div
         role="dialog"
         aria-modal="true"
         aria-labelledby="campaign-wizard-title"
+        initial={reduce ? false : { opacity: 0, scale: 0.97, y: 12 }}
+        animate={{ opacity: 1, scale: 1, y: 0 }}
+        transition={{ type: "spring", stiffness: 260, damping: 28 }}
         className="flex h-full max-h-[960px] w-full max-w-[1320px] flex-col overflow-hidden rounded-[24px] border border-line bg-bg shadow-2xl"
       >
         <header className="shrink-0 border-b border-line">
@@ -88,8 +108,22 @@ export default function WizardChrome({
             </span>
 
             <div className="ml-auto flex items-center gap-4">
-              <span className="text-[13px] font-semibold text-muted">
-                Step {current} of {total}
+              <span className="flex items-center text-[13px] font-semibold text-muted">
+                Step&nbsp;
+                <span className="relative inline-grid overflow-hidden tabular-nums">
+                  <AnimatePresence initial={false} mode="popLayout">
+                    <motion.span
+                      key={current}
+                      initial={{ y: reduce ? 0 : 12 * direction, opacity: 0 }}
+                      animate={{ y: 0, opacity: 1 }}
+                      exit={{ y: reduce ? 0 : -12 * direction, opacity: 0 }}
+                      transition={{ duration: 0.22, ease: [0.23, 1, 0.32, 1] }}
+                    >
+                      {current}
+                    </motion.span>
+                  </AnimatePresence>
+                </span>
+                &nbsp;of {total}
               </span>
               <Link
                 href={exitHref}
@@ -105,10 +139,14 @@ export default function WizardChrome({
 
           <div className="flex gap-1 px-5 pb-3 sm:px-7" aria-hidden>
             {wizardStages.map((item, index) => (
-              <span
-                key={item}
-                className={`h-1 flex-1 rounded-full ${index < current ? "bg-solid" : "bg-line"}`}
-              />
+              <span key={item} className="h-1 flex-1 overflow-hidden rounded-full bg-line">
+                <motion.span
+                  className="block h-full origin-left rounded-full bg-solid"
+                  initial={false}
+                  animate={{ scaleX: index < current ? 1 : 0 }}
+                  transition={{ type: "spring", stiffness: 180, damping: 26 }}
+                />
+              </span>
             ))}
           </div>
         </header>
@@ -119,6 +157,16 @@ export default function WizardChrome({
               wide ? "max-w-[1400px]" : "max-w-[880px]"
             }`}
           >
+            <AnimatePresence mode="wait" initial={false} custom={direction}>
+            <motion.div
+              key={stage}
+              custom={direction}
+              variants={stepVariants}
+              initial="enter"
+              animate="center"
+              exit="exit"
+              transition={{ duration: 0.26, ease: [0.23, 1, 0.32, 1] }}
+            >
             <div className={wide ? "mb-5" : "mb-7"}>
               <h1
                 id="campaign-wizard-title"
@@ -132,6 +180,8 @@ export default function WizardChrome({
             </div>
 
             {children}
+            </motion.div>
+            </AnimatePresence>
           </div>
         </main>
 
@@ -143,7 +193,7 @@ export default function WizardChrome({
             </div>
           </footer>
         ) : null}
-      </div>
+      </motion.div>
     </div>
   );
 }
