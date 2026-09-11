@@ -5,9 +5,11 @@ import {
   JobRole,
   JobStatus,
   PlacementStatus,
+  VerificationMode,
   VerificationRunStatus,
   type Evidence,
 } from "@/generated/prisma/client";
+import { assertPlacementTransition } from "@/lib/placements/state";
 import { recordChainTransaction } from "@/lib/chain/ledger";
 import { getPrismaClient } from "@/lib/database/prisma";
 import { ApiError } from "@/lib/http/api-error";
@@ -79,17 +81,34 @@ export async function buildEvidenceBundle(placementId: string) {
     hash ? [hash] : [],
   );
 
-  const reused = hashes.length
-    ? await prisma.evidence.findMany({
-        where: { mediaHash: { in: hashes }, placementId: { not: placementId } },
-        select: { mediaHash: true },
-      })
-    : [];
+  const [reused, trail] = await Promise.all([
+    hashes.length
+      ? prisma.evidence.findMany({
+          where: { mediaHash: { in: hashes }, placementId: { not: placementId } },
+          select: { mediaHash: true },
+        })
+      : Promise.resolve([]),
+    // The installer's live trail: the evidence a self-verified placement
+    // rests on. It never leaves the enclave.
+    prisma.locationPing.findMany({
+      where: { placementId, job: { role: JobRole.INSTALLER } },
+      orderBy: { recordedAt: "asc" },
+      take: 500,
+      select: { latitude: true, longitude: true, accuracyMeters: true, recordedAt: true },
+    }),
+  ]);
 
   return {
     placementId,
     onchainPlacementId: placement.onchainPlacementId,
     expectedShortCode: placement.asset.shortCode,
+    mode: placement.verificationMode,
+    trail: trail.map((ping) => ({
+      latitude: ping.latitude,
+      longitude: ping.longitude,
+      accuracyMeters: ping.accuracyMeters,
+      recordedAt: ping.recordedAt.toISOString(),
+    })),
     geofence: {
       latitude: placement.location.latitude,
       longitude: placement.location.longitude,
@@ -107,6 +126,7 @@ const verdictSchema = z.object({
   reasons: z.array(z.string().max(64)).max(20),
   evidenceHash: hex32,
   txHash: hex32.optional(),
+  spotCheck: z.boolean().optional(),
 });
 
 function rolesToRedo(reasons: string[]) {
@@ -157,6 +177,34 @@ export async function recordVerdict(placementId: string, body: unknown) {
         ...verdictData,
       },
     });
+  }
+
+  if (verdict.approved && verdict.spotCheck) {
+    // Drawn for a random spot check: open an independent check before anyone
+    // is paid. The self-verification job is released to a second worker.
+    await prisma.$transaction(async (transaction) => {
+      const current = await transaction.placement.findUniqueOrThrow({ where: { id: placementId } });
+      assertPlacementTransition(current.status, PlacementStatus.AWAITING_VERIFIER);
+      await transaction.placement.update({
+        where: { id: placementId },
+        data: {
+          status: PlacementStatus.AWAITING_VERIFIER,
+          verificationMode: VerificationMode.INDEPENDENT,
+          spotCheckRequired: true,
+        },
+      });
+      await transaction.job.updateMany({
+        where: { placementId, role: JobRole.VERIFIER },
+        data: {
+          status: JobStatus.OPEN,
+          workerUserId: null,
+          acceptedAt: null,
+          startedAt: null,
+          submittedAt: null,
+        },
+      });
+    });
+    return { ok: true };
   }
 
   if (verdict.approved) {

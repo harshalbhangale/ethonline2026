@@ -37,8 +37,7 @@ export function isCreRunnerAvailable() {
  * rejects config paths longer than 97 characters and resolves relative ones
  * from the workflow folder, so this returns a short absolute path in `cre/`.
  */
-function writeRunConfig(appUrl: string, runId: string) {
-  const config = getChainConfig();
+function writeRunConfig(appUrl: string, runId: string, escrow: string) {
   const directory = path.join(creProjectRoot(), ".runs");
   mkdirSync(directory, { recursive: true });
   const file = path.join(directory, `${runId.slice(-10)}.json`);
@@ -47,6 +46,8 @@ function writeRunConfig(appUrl: string, runId: string) {
     JSON.stringify({
       evidence_api_url: `${appUrl.replace(/\/$/, "")}/api/cre/placements`,
       challenge_grace_seconds: 30,
+      min_dwell_seconds: Number(process.env.STICKERBOMB_MIN_DWELL_SECONDS ?? 30),
+      spot_check_percent: Number(process.env.STICKERBOMB_SPOT_CHECK_PERCENT ?? 10),
       secrets_ids: {
         evidence_api_key_id: "evidence_api_key",
         geofence_salt_id: "geofence_salt",
@@ -54,7 +55,7 @@ function writeRunConfig(appUrl: string, runId: string) {
       evms: [
         {
           chain_selector_name: "ethereum-testnet-sepolia",
-          consumer_address: config.escrow,
+          consumer_address: escrow,
           gas_limit: "500000",
         },
       ],
@@ -80,6 +81,8 @@ async function finishRun(runId: string, placementId: string, code: number | null
   const prisma = getPrismaClient();
   const txHash = output.match(/report written tx=(0x[0-9a-fA-F]{64})/)?.[1];
   const approved = output.match(/verdict approved=(true|false)/)?.[1];
+  // A spot check is a finished verdict with nothing written onchain yet.
+  const spotCheck = /spotCheck=true/.test(output);
 
   try {
     await prisma.verificationRun.update({
@@ -87,7 +90,8 @@ async function finishRun(runId: string, placementId: string, code: number | null
       data: {
         // The onchain report is what settles money; a later failure (such as
         // the verdict callback timing out) does not undo it.
-        status: txHash ? VerificationRunStatus.SUCCEEDED : VerificationRunStatus.FAILED,
+        status:
+          txHash || spotCheck ? VerificationRunStatus.SUCCEEDED : VerificationRunStatus.FAILED,
         log: redact(output).slice(-LOG_LIMIT),
         finishedAt: new Date(),
         ...(txHash ? { txHash } : {}),
@@ -102,7 +106,10 @@ async function finishRun(runId: string, placementId: string, code: number | null
 
 export async function startVerificationRun(placementId: string, appUrl: string) {
   const prisma = getPrismaClient();
-  const placement = await prisma.placement.findUnique({ where: { id: placementId } });
+  const placement = await prisma.placement.findUnique({
+    where: { id: placementId },
+    include: { campaign: { select: { escrowAddress: true } } },
+  });
   if (!placement) throw new ApiError(404, "PLACEMENT_NOT_FOUND", "Placement not found.");
 
   if (placement.status !== PlacementStatus.READY_FOR_FINAL_VERIFICATION) {
@@ -155,7 +162,8 @@ export async function startVerificationRun(placementId: string, appUrl: string) 
       JSON.stringify({ placementId }),
       "--broadcast",
       "--config",
-      writeRunConfig(appUrl, run.id),
+      // The report must reach the escrow this campaign was funded into.
+      writeRunConfig(appUrl, run.id, placement.campaign.escrowAddress ?? getChainConfig().escrow),
     ],
     {
       cwd: creProjectRoot(),

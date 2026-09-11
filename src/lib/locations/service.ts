@@ -1,5 +1,6 @@
 import { CampaignStatus, Prisma } from "@/generated/prisma/client";
 import type { BrandContext } from "@/lib/auth/require-brand";
+import { buildAreaLabel } from "@/lib/campaigns/service";
 import { getPrismaClient } from "@/lib/database/prisma";
 import { ApiError } from "@/lib/http/api-error";
 import type {
@@ -432,4 +433,121 @@ export async function getCampaignLocationIds(
   });
 
   return rows.map((row) => row.locationId);
+}
+
+/**
+ * Saves the whole placement step in one request: areas, location strategy,
+ * the chosen approved locations and the wizard's progress.
+ *
+ * The wizard used to send four requests in sequence for this, each one
+ * re-authenticating and re-reading the campaign. Locations are validated
+ * against the areas being saved, so nothing has to be stored first.
+ */
+export async function saveCampaignPlacementPlan(
+  context: BrandContext,
+  campaignId: string,
+  {
+    areas,
+    strategy,
+    locationIds,
+  }: {
+    areas: CampaignAreaInput[];
+    strategy: "AUTO_APPROVED" | "MANUAL_SELECTION";
+    locationIds: string[];
+  },
+) {
+  const prisma = getPrismaClient();
+  const campaign = await prisma.campaign.findFirst({
+    where: { id: campaignId, organizationId: context.organizationId },
+    select: { id: true, status: true, placementCount: true, city: true, countryName: true },
+  });
+
+  if (!campaign) {
+    throw new ApiError(404, "CAMPAIGN_NOT_FOUND", "Campaign not found.");
+  }
+
+  if (campaign.status !== CampaignStatus.DRAFT) {
+    throw new ApiError(
+      409,
+      "CAMPAIGN_NOT_EDITABLE",
+      "Only draft campaigns can change their placements.",
+    );
+  }
+
+  if (areas.length === 0) {
+    throw new ApiError(400, "AREA_REQUIRED", "Add at least one campaign area.");
+  }
+
+  const availability = await findAvailableLocationsForAreas({ areas, campaignId });
+  const selectable = availability.locations.filter((location) => location.hasCapacity);
+
+  if (selectable.length === 0) {
+    throw new ApiError(
+      409,
+      "NO_APPROVED_LOCATIONS",
+      "No approved locations are available in these areas yet.",
+    );
+  }
+
+  let chosen: string[];
+  if (strategy === "AUTO_APPROVED") {
+    // Nearest first, capped at the requested placement count.
+    chosen = selectable
+      .slice(0, campaign.placementCount ?? selectable.length)
+      .map((location) => location.id);
+  } else {
+    const allowed = new Set(selectable.map((location) => location.id));
+    if (locationIds.length === 0) {
+      throw new ApiError(400, "LOCATION_REQUIRED", "Select at least one approved location.");
+    }
+    if (locationIds.some((id) => !allowed.has(id))) {
+      throw new ApiError(
+        409,
+        "LOCATION_UNAVAILABLE",
+        "One or more selected locations are outside the area or already full.",
+      );
+    }
+    chosen = [...new Set(locationIds)];
+  }
+
+  const [primary] = areas;
+
+  await prisma.$transaction(async (transaction) => {
+    await transaction.campaignArea.deleteMany({ where: { campaignId } });
+    await transaction.campaignArea.createMany({
+      data: areas.map((area, index) => ({
+        campaignId,
+        label: area.label,
+        latitude: area.latitude,
+        longitude: area.longitude,
+        radiusMeters: area.radiusMetres,
+        sortOrder: index,
+      })),
+    });
+    await transaction.campaignLocation.deleteMany({ where: { campaignId } });
+    await transaction.campaignLocation.createMany({
+      data: chosen.map((locationId) => ({
+        campaignId,
+        locationId,
+        source: strategy === "AUTO_APPROVED" ? "SYSTEM" : "BRAND",
+      })),
+    });
+    await transaction.campaign.update({
+      where: { id: campaignId },
+      data: {
+        centerLatitude: primary.latitude,
+        centerLongitude: primary.longitude,
+        radiusMeters: primary.radiusMetres,
+        areaLabel: buildAreaLabel({
+          city: campaign.city,
+          countryName: campaign.countryName,
+          radiusMeters: primary.radiusMetres,
+        }),
+        locationStrategy: strategy,
+        wizardStep: "CREATIVE",
+      },
+    });
+  });
+
+  return { selectedLocationIds: chosen };
 }

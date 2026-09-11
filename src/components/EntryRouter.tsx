@@ -1,9 +1,11 @@
 "use client";
 
 import { usePrivy } from "@privy-io/react-auth";
+import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
+import banner from "@/assets/banner.jpg";
 import {
   authenticatedFetch,
   ClientApiError,
@@ -187,9 +189,6 @@ export default function EntryRouter() {
 
   return (
     <main className="grid min-h-screen lg:grid-cols-2">
-      {/* Reserved for the hero visual. Hidden on small screens. */}
-      <div className="hidden lg:block" />
-
       <div className="flex items-center justify-center px-5 py-12 sm:px-10">
       <div className="w-full max-w-[520px]">
         <div className="mb-8 flex items-center justify-center gap-2.5">
@@ -236,6 +235,18 @@ export default function EntryRouter() {
           </div>
         </div>
       </div>
+      </div>
+
+      {/* Hero visual. Hidden on small screens so the sign-in card owns the viewport. */}
+      <div className="relative hidden lg:block">
+        <Image
+          src={banner}
+          alt=""
+          fill
+          priority
+          sizes="50vw"
+          className="object-cover"
+        />
       </div>
     </main>
   );

@@ -20,6 +20,7 @@ const photoProof = {
   latitude: z.number().min(-90).max(90).optional(),
   longitude: z.number().min(-180).max(180).optional(),
   accuracyMeters: z.number().nonnegative().max(100_000).optional(),
+  scannedShortCode: z.string().trim().max(32).optional(),
 };
 
 const actionSchema = z.discriminatedUnion("action", [
@@ -43,7 +44,7 @@ export async function POST(
       case "accept-placement":
         return Response.json({ job: await acceptPlacement(context, jobId) });
       case "submit-proof":
-        return Response.json({ job: await submitInstallProof(context, jobId, body) });
+        return Response.json({ job: await submitInstallProof(context, jobId, body, resolveAppUrl(request)) });
       case "accept-check":
         return Response.json({ job: await acceptCheck(context, jobId) });
       case "confirm":

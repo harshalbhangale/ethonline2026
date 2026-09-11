@@ -101,7 +101,6 @@ contract CampaignEscrow is IReceiver {
     error InsufficientBudget();
     error InvalidPlacementStatus();
     error WorkersUnassigned();
-    error SelfVerification();
     error NothingToRefund();
     error TransferFailed();
 
@@ -190,12 +189,15 @@ contract CampaignEscrow is IReceiver {
         emit PlacementRegistered(placementId, campaignId, installerReward, verifierReward, cleanupReward);
     }
 
-    /// @notice Records who installed and who independently verified.
+    /// @notice Records who installed and who verified the placement.
+    /// @dev The same address may do both: a self-verified placement is proven
+    ///      by the confidential CRE check (location trail, poster code, photo)
+    ///      rather than by a second person, and its worker earns both rewards.
+    ///      Randomly sampled spot checks assign an independent verifier.
     function assignWorkers(bytes32 placementId, address installer, address verifier) external onlyOperator {
         Placement storage placement = placements[placementId];
         if (placement.status != PlacementStatus.Registered) revert InvalidPlacementStatus();
         if (installer == address(0) || verifier == address(0)) revert ZeroAddress();
-        if (installer == verifier) revert SelfVerification();
 
         placement.installer = installer;
         placement.verifier = verifier;

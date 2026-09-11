@@ -3,6 +3,7 @@ import {
   JobRole,
   JobStatus,
   PlacementStatus,
+  VerificationMode,
   type Job,
 } from "@/generated/prisma/client";
 import { perPlacementMinor } from "@/lib/campaigns/pricing";
@@ -31,20 +32,31 @@ export type ProofInput = {
 /**
  * Where the placement goes after a proof, or null to stay put.
  *
- * After a rejected verification either or both proofs may need recapturing;
- * the placement returns to final verification only once every rejected proof
- * has been replaced.
+ * SELF placements go straight to the confidential check after the installer's
+ * proof. INDEPENDENT ones (spot checks) wait for a second worker. After a
+ * rejection, the placement returns to final verification once every rejected
+ * proof has been replaced.
  */
 function nextPlacementPath(
   status: PlacementStatus,
   role: JobRole,
   jobs: Job[],
+  mode: VerificationMode,
 ): PlacementStatus[] | null {
   const other = jobs.find(
     (job) => job.role === (role === JobRole.INSTALLER ? JobRole.VERIFIER : JobRole.INSTALLER),
   );
 
-  if (role === JobRole.INSTALLER) {
+  if (role === JobRole.INSTALLER && mode === VerificationMode.SELF) {
+    if (status === PlacementStatus.INSTALLING) {
+      return [PlacementStatus.INSTALL_SUBMITTED, PlacementStatus.READY_FOR_FINAL_VERIFICATION];
+    }
+    if (status === PlacementStatus.NEEDS_RECAPTURE) {
+      return [PlacementStatus.READY_FOR_FINAL_VERIFICATION];
+    }
+  }
+
+  if (role === JobRole.INSTALLER && mode === VerificationMode.INDEPENDENT) {
     if (status === PlacementStatus.INSTALLING) {
       return [PlacementStatus.INSTALL_SUBMITTED, PlacementStatus.AWAITING_VERIFIER];
     }
@@ -108,7 +120,8 @@ export async function recordProof(
       assertJobTransition(job.status, JobStatus.PROOF_SUBMITTED);
     }
 
-    const path = nextPlacementPath(placement.status, role, placement.jobs);
+    const path = nextPlacementPath(placement.status, role, placement.jobs, placement.verificationMode);
+    const now = new Date();
 
     await transaction.evidence.create({
       data: {
@@ -133,7 +146,7 @@ export async function recordProof(
 
     await transaction.job.update({
       where: { id: job.id },
-      data: { status: JobStatus.PROOF_SUBMITTED, submittedAt: new Date() },
+      data: { status: JobStatus.PROOF_SUBMITTED, submittedAt: now },
     });
 
     if (!path) return;
@@ -148,9 +161,7 @@ export async function recordProof(
       where: { id: placementId },
       data: {
         status: current,
-        ...(role === JobRole.INSTALLER && !placement.installedAt
-          ? { installedAt: new Date() }
-          : {}),
+        ...(role === JobRole.INSTALLER && !placement.installedAt ? { installedAt: now } : {}),
       },
     });
 
@@ -168,13 +179,42 @@ export async function recordProof(
         skipDuplicates: true,
       });
     }
+
+    // A self-verified placement: the installer also did the verifying, so the
+    // verifier job (and its reward) is theirs too. Settlement pays both.
+    if (
+      role === JobRole.INSTALLER &&
+      placement.verificationMode === VerificationMode.SELF &&
+      current === PlacementStatus.READY_FOR_FINAL_VERIFICATION
+    ) {
+      await transaction.job.upsert({
+        where: { placementId_role: { placementId, role: JobRole.VERIFIER } },
+        update: {
+          workerUserId,
+          status: JobStatus.PROOF_SUBMITTED,
+          submittedAt: now,
+        },
+        create: {
+          placementId,
+          campaignId: placement.campaignId,
+          role: JobRole.VERIFIER,
+          rewardMinor: BigInt(perPlacementMinor.verification),
+          currency: placement.campaign.currency,
+          workerUserId,
+          status: JobStatus.PROOF_SUBMITTED,
+          acceptedAt: now,
+          startedAt: now,
+          submittedAt: now,
+        },
+      });
+    }
   });
 }
 
 /**
- * The verifier could not find the poster. The installer must recapture, and
- * the verifier job is released so an independent check can happen again.
- * No money moves: the escrow only pays on an approved confidential verdict.
+ * The checker could not find the poster (spot checks). The installer must
+ * recapture, and the check is released so it can happen again. No money
+ * moves: the escrow only pays on an approved confidential verdict.
  */
 export async function reportPosterMissing(
   placementId: string,

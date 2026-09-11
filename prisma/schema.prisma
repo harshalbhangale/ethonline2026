@@ -160,6 +160,11 @@ enum VerificationRunStatus {
   FAILED
 }
 
+enum VerificationMode {
+  SELF
+  INDEPENDENT
+}
+
 model User {
   id                   String               @id @default(cuid())
   privyUserId          String               @unique @map("privy_user_id") @db.VarChar(255)
@@ -170,6 +175,7 @@ model User {
   createdOrganizations Organization[]       @relation("OrganizationCreator")
   campaignsCreated     Campaign[]           @relation("CampaignCreator")
   evidence             Evidence[]
+  locationPings        LocationPing[]
   fundingRequested     FundingRequest[]     @relation("FundingRequester")
   fundingDecided       FundingRequest[]     @relation("FundingDecider")
   installedPlacements  Placement[]          @relation("PlacementInstaller")
@@ -192,6 +198,9 @@ model Organization {
   treasuryAddress        String?              @map("treasury_address") @db.VarChar(64)
   /// Privy policy restricting the treasury to escrow funding on Sepolia.
   treasuryPolicyId       String?              @map("treasury_policy_id") @db.VarChar(64)
+  /// The escrow the current policy allows. A new escrow deployment needs a
+  /// new policy, or Privy would refuse to fund it.
+  treasuryPolicyEscrow   String?              @map("treasury_policy_escrow") @db.VarChar(42)
   /// Funding above this amount (minor units) needs a second member's approval.
   approvalThresholdMinor BigInt?              @map("approval_threshold_minor")
   creator     User                 @relation("OrganizationCreator", fields: [createdById], references: [id], onDelete: Restrict)
@@ -441,10 +450,16 @@ model Placement {
   location           Location        @relation(fields: [locationId], references: [id], onDelete: Restrict)
   installer          User?           @relation("PlacementInstaller", fields: [installerUserId], references: [id], onDelete: Restrict)
   verifier           User?           @relation("PlacementVerifier", fields: [verifierUserId], references: [id], onDelete: Restrict)
+  /// SELF: the installer's own proof, judged by the confidential CRE check
+  /// (location trail, poster code, photo). INDEPENDENT: a second worker
+  /// checks, used for randomly sampled spot checks.
+  verificationMode   VerificationMode @default(SELF) @map("verification_mode")
+  spotCheckRequired  Boolean          @default(false) @map("spot_check_required")
   jobs               Job[]
   evidence           Evidence[]
   chainTransactions  ChainTransaction[]
   verificationRuns   VerificationRun[]
+  locationPings      LocationPing[]
 
   @@index([campaignId])
   @@index([locationId])
@@ -476,6 +491,7 @@ model Job {
   campaign      Campaign  @relation(fields: [campaignId], references: [id], onDelete: Cascade)
   worker        User?     @relation("JobWorker", fields: [workerUserId], references: [id], onDelete: Restrict)
   evidence      Evidence[]
+  locationPings LocationPing[]
 
   @@unique([placementId, role])
   @@index([campaignId])
@@ -610,4 +626,25 @@ model VerificationRun {
 
   @@index([placementId, createdAt(sort: Desc)])
   @@map("verification_runs")
+}
+
+/// A worker's live position while holding a job, sent by the Worker PWA every
+/// few seconds. The full trail is read only by the confidential CRE check;
+/// brands see just the latest position of an active job.
+model LocationPing {
+  id             String    @id @default(cuid())
+  placementId    String    @map("placement_id")
+  jobId          String    @map("job_id")
+  workerUserId   String    @map("worker_user_id")
+  latitude       Float
+  longitude      Float
+  accuracyMeters Float?    @map("accuracy_meters")
+  recordedAt     DateTime  @default(now()) @map("recorded_at") @db.Timestamptz(3)
+  placement      Placement @relation(fields: [placementId], references: [id], onDelete: Cascade)
+  job            Job       @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  worker         User      @relation(fields: [workerUserId], references: [id], onDelete: Cascade)
+
+  @@index([jobId, recordedAt])
+  @@index([placementId, recordedAt(sort: Desc)])
+  @@map("location_pings")
 }

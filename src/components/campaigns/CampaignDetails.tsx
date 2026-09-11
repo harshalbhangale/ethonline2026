@@ -1,6 +1,7 @@
 "use client";
 
 import { usePrivy } from "@privy-io/react-auth";
+import dynamic from "next/dynamic";
 import Link from "next/link";
 import {
   useCallback,
@@ -26,6 +27,15 @@ import {
   notSetLabel,
 } from "@/lib/campaigns/format";
 import type { CampaignDto, CampaignResponse } from "@/lib/campaigns/types";
+
+// mapbox-gl is heavy, and a draft campaign has nothing to track yet.
+const LivePlacementMap = dynamic(
+  () => import("@/components/placements/LivePlacementMap"),
+  {
+    ssr: false,
+    loading: () => <div className="h-80 animate-pulse rounded-[20px] bg-raised" />,
+  },
+);
 
 type CampaignLoadState = {
   scope: string | null;
@@ -412,6 +422,10 @@ export default function CampaignDetails({ campaignId }: { campaignId: string }) 
       </Card>
 
       <EscrowPanel campaignId={campaign.id} funded={campaign.fundedAt !== null} />
+
+      {campaign.fundedAt !== null ? (
+        <LivePlacementMap campaignId={campaign.id} />
+      ) : null}
 
       <PlacementBoard campaignId={campaign.id} funded={campaign.fundedAt !== null} />
 

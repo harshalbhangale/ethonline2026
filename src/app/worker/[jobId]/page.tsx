@@ -3,18 +3,30 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { use, useEffect, useRef, useState } from "react";
+import LivePresencePanel, {
+  useLivePresence,
+} from "@/components/worker/LivePresence";
 import MiniMap from "@/components/worker/MiniMap";
+import PosterCodeField from "@/components/worker/PosterCodeField";
 import SpotPhoto from "@/components/worker/SpotPhoto";
 import { useWorker } from "@/components/worker/WorkerStore";
 import { ClientApiError } from "@/lib/api/authenticated-fetch";
-import { describeRejection, formatDate, formatMoney } from "@/lib/worker-data";
+import {
+  describeRejection,
+  describeSubmissionError,
+  formatDate,
+  formatMoney,
+} from "@/lib/worker-data";
 
 type Fix = { latitude: number; longitude: number } | null;
 
 function actionErrorMessage(error: unknown) {
-  return error instanceof ClientApiError
-    ? error.message
-    : "Could not update this job. Please try again.";
+  if (!(error instanceof ClientApiError)) {
+    return "Could not update this job. Please try again.";
+  }
+
+  const help = describeSubmissionError(error.code);
+  return help ? `${error.message} ${help}` : error.message;
 }
 
 export default function JobDetail({
@@ -43,7 +55,15 @@ export default function JobDetail({
   const [jobLoading, setJobLoading] = useState(true);
   const [acting, setActing] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [code, setCode] = useState("");
   const fileRef = useRef<HTMLInputElement>(null);
+
+  // Live tracking runs only while this worker owes proof on the job.
+  const owesProof = job
+    ? (job.status === "ACCEPTED" && job.isInstaller) ||
+      (job.status === "CHECK_ACCEPTED" && job.isVerifier)
+    : false;
+  const presence = useLivePresence(jobId, owesProof);
 
   useEffect(() => {
     let cancelled = false;
@@ -92,6 +112,22 @@ export default function JobDetail({
     job.isVerifier ||
     (job.status === "AWAITING_CHECK" && !job.isInstaller);
   const revealed = Boolean(job.placementInstructions);
+
+  // The live watcher is fresher than the single fix taken at capture time.
+  const proofFix = presence.fix ?? fix;
+  const scannedShortCode = code.trim();
+  // Only hold the worker back when we actually have a reading to hold them to;
+  // if location is unavailable the server and the confidential check still
+  // enforce the real fence.
+  const awaitingArrival = presence.reading
+    ? !presence.reading.readyToVerify
+    : false;
+  const canSubmitProof =
+    Boolean(photo) &&
+    scannedShortCode.length > 0 &&
+    !awaitingArrival &&
+    !locating &&
+    !acting;
 
   function capture(event: React.ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0];
@@ -151,8 +187,8 @@ export default function JobDetail({
             <p className="text-[13px] text-[var(--muted)]">
               {locating
                 ? "Getting location"
-                : fix
-                  ? `Location saved · ${fix.latitude.toFixed(4)}, ${fix.longitude.toFixed(4)}`
+                : proofFix
+                  ? `Location saved · ${proofFix.latitude.toFixed(4)}, ${proofFix.longitude.toFixed(4)}`
                   : "No location"}
             </p>
             <button
@@ -280,18 +316,37 @@ export default function JobDetail({
 
       {job.status === "ACCEPTED" && job.isInstaller && (
         <>
+          <LivePresencePanel
+            presence={presence}
+            radiusMeters={job.geofenceRadiusMeters}
+            minDwellSeconds={job.minDwellSeconds}
+          />
+          <PosterCodeField
+            value={code}
+            onChange={setCode}
+            disabled={acting}
+          />
           {captureBlock}
           <button
-            disabled={!photo || locating || acting}
+            disabled={!canSubmitProof}
             onClick={() =>
               void runAction(
-                () => submitProof(job.id, { photo: photo!, ...(fix ?? {}) }),
+                () =>
+                  submitProof(job.id, {
+                    photo: photo!,
+                    scannedShortCode,
+                    ...(proofFix ?? {}),
+                  }),
                 true,
               )
             }
             className="mt-4 w-full rounded-2xl bg-[var(--solid)] py-4 text-[16px] font-bold text-[var(--solid-ink)] disabled:opacity-35"
           >
-            {acting ? "Submitting proof" : "Submit proof"}
+            {acting
+              ? "Submitting proof"
+              : job.verificationMode === "SELF"
+                ? "Stick & verify"
+                : "Submit proof"}
           </button>
         </>
       )}
@@ -337,13 +392,28 @@ export default function JobDetail({
               />
             </div>
           )}
+          <LivePresencePanel
+            presence={presence}
+            radiusMeters={job.geofenceRadiusMeters}
+            minDwellSeconds={job.minDwellSeconds}
+          />
+          <PosterCodeField
+            value={code}
+            onChange={setCode}
+            disabled={acting}
+          />
           {captureBlock}
           <div className="mt-4 flex gap-3">
             <button
-              disabled={!photo || locating || acting}
+              disabled={!canSubmitProof}
               onClick={() =>
                 void runAction(
-                  () => confirmPlacement(job.id, { photo: photo!, ...(fix ?? {}) }),
+                  () =>
+                    confirmPlacement(job.id, {
+                      photo: photo!,
+                      scannedShortCode,
+                      ...(proofFix ?? {}),
+                    }),
                   true,
                 )
               }

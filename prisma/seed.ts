@@ -258,6 +258,317 @@ const seedCities: SeedCity[] = [
           "Visitor information board beside the walkway. Centre management must witness installation.",
         maxActiveCampaigns: 3,
       },
+      {
+        slug: "cpt-kloof-street-cafe-window",
+        venueName: "Kloof Street café window",
+        district: "Gardens",
+        latitude: -33.931,
+        longitude: 18.409,
+        placementInstructions:
+          "Inside the front window at eye height, static cling only. The QR must scan from the pavement.",
+        maxActiveCampaigns: 3,
+      },
+      {
+        slug: "cpt-bree-street-coworking",
+        venueName: "Bree Street coworking lobby",
+        district: "City Bowl",
+        latitude: -33.919,
+        longitude: 18.418,
+        placementInstructions:
+          "Lobby community board opposite the lifts. Sign in at reception before installing.",
+        maxActiveCampaigns: 3,
+      },
+      {
+        slug: "cpt-camps-bay-promenade-board",
+        venueName: "Camps Bay promenade board",
+        district: "Camps Bay",
+        latitude: -33.951,
+        longitude: 18.3776,
+        placementInstructions:
+          "Promenade noticeboard frame. High wind: fix all four corners with the supplied clips.",
+        maxActiveCampaigns: 2,
+      },
+      {
+        slug: "cpt-claremont-mall-panel",
+        venueName: "Claremont community panel",
+        district: "Claremont",
+        latitude: -33.9807,
+        longitude: 18.4655,
+        placementInstructions:
+          "Community events panel near the main entrance. Centre management must witness installation.",
+        maxActiveCampaigns: 3,
+      },
+    ],
+  },
+  {
+    city: "New Delhi",
+    countryCode: "IN",
+    countryName: "India",
+    locations: [
+      {
+        slug: "del-connaught-place-inner-circle",
+        venueName: "Connaught Place inner circle board",
+        district: "Connaught Place",
+        latitude: 28.6315,
+        longitude: 77.2167,
+        placementInstructions:
+          "Permitted community board in the inner circle colonnade. Keep clear of shop signage.",
+        maxActiveCampaigns: 3,
+      },
+      {
+        slug: "del-khan-market-cafe-window",
+        venueName: "Khan Market café window",
+        district: "Khan Market",
+        latitude: 28.6003,
+        longitude: 77.227,
+        placementInstructions:
+          "Inside the café window at eye height, static cling only. Staff position it during opening hours.",
+        maxActiveCampaigns: 3,
+      },
+      {
+        slug: "del-hauz-khas-gallery-wall",
+        venueName: "Hauz Khas Village gallery wall",
+        district: "Hauz Khas",
+        latitude: 28.5535,
+        longitude: 77.1943,
+        placementInstructions:
+          "Use the permitted paste-up panel beside the gallery entrance. The heritage wall itself is protected.",
+        maxActiveCampaigns: 3,
+      },
+      {
+        slug: "del-saket-mall-panel",
+        venueName: "Saket community panel",
+        district: "Saket",
+        latitude: 28.5285,
+        longitude: 77.219,
+        placementInstructions:
+          "Community events panel near the food court entrance. Mall staff must witness installation.",
+        maxActiveCampaigns: 3,
+      },
+      {
+        slug: "del-lajpat-nagar-market-board",
+        venueName: "Lajpat Nagar market board",
+        district: "Lajpat Nagar",
+        latitude: 28.5677,
+        longitude: 77.2433,
+        placementInstructions:
+          "Traders' association board at the Central Market entrance. Do not cover trader notices.",
+        maxActiveCampaigns: 2,
+      },
+      {
+        slug: "del-nehru-place-coworking",
+        venueName: "Nehru Place coworking board",
+        district: "Nehru Place",
+        latitude: 28.5494,
+        longitude: 77.2519,
+        placementInstructions:
+          "Members' noticeboard by the lifts. Reception must be told before installation.",
+        maxActiveCampaigns: 3,
+      },
+      {
+        slug: "del-rajouri-garden-cafe-board",
+        venueName: "Rajouri Garden café board",
+        district: "Rajouri Garden",
+        latitude: 28.6415,
+        longitude: 77.1209,
+        placementInstructions:
+          "Chalkboard frame beside the café entrance. Return it indoors at closing time.",
+        maxActiveCampaigns: 2,
+      },
+      {
+        slug: "del-chandni-chowk-heritage-board",
+        venueName: "Chandni Chowk visitor board",
+        district: "Chandni Chowk",
+        latitude: 28.6506,
+        longitude: 77.2303,
+        placementInstructions:
+          "Visitor information board at the pedestrian plaza. Municipal permit reference must be carried on site.",
+        maxActiveCampaigns: 2,
+      },
+    ],
+  },
+  {
+    city: "Bengaluru",
+    countryCode: "IN",
+    countryName: "India",
+    locations: [
+      {
+        slug: "blr-hsr-27th-main-cafe-window",
+        venueName: "HSR 27th Main café window",
+        district: "HSR Layout",
+        latitude: 12.9116,
+        longitude: 77.6446,
+        placementInstructions:
+          "Inside the café window at eye height, static cling only. The QR must scan from the footpath.",
+        maxActiveCampaigns: 3,
+      },
+      {
+        slug: "blr-hsr-sector-1-coworking",
+        venueName: "HSR Sector 1 coworking board",
+        district: "HSR Layout",
+        latitude: 12.917,
+        longitude: 77.644,
+        placementInstructions:
+          "Members' noticeboard by the lifts. Sign in at reception before installing.",
+        maxActiveCampaigns: 3,
+      },
+      {
+        slug: "blr-hsr-sector-2-market-board",
+        venueName: "HSR Sector 2 market board",
+        district: "HSR Layout",
+        latitude: 12.9128,
+        longitude: 77.6475,
+        placementInstructions:
+          "Shared retail noticeboard at the market lane entrance. Keep clear of shop signage.",
+        maxActiveCampaigns: 3,
+      },
+      {
+        slug: "blr-hsr-sector-4-bda-complex-board",
+        venueName: "HSR BDA complex community board",
+        district: "HSR Layout",
+        latitude: 12.912,
+        longitude: 77.638,
+        placementInstructions:
+          "Community board beside the complex entrance. Do not remove any existing notice.",
+        maxActiveCampaigns: 3,
+      },
+      {
+        slug: "blr-hsr-sector-6-park-panel",
+        venueName: "HSR Sector 6 park gate panel",
+        district: "HSR Layout",
+        latitude: 12.908,
+        longitude: 77.633,
+        placementInstructions:
+          "Residents' association panel at the park gate. Fix all four corners.",
+        maxActiveCampaigns: 3,
+      },
+      {
+        slug: "blr-hsr-sector-7-gym-board",
+        venueName: "HSR Sector 7 gym noticeboard",
+        district: "HSR Layout",
+        latitude: 12.905,
+        longitude: 77.642,
+        placementInstructions:
+          "Front-desk noticeboard inside the entrance. Staff must approve on arrival.",
+        maxActiveCampaigns: 3,
+      },
+      {
+        slug: "blr-koramangala-5th-block-cafe",
+        venueName: "Koramangala 5th Block café board",
+        district: "Koramangala",
+        latitude: 12.9352,
+        longitude: 77.6245,
+        placementInstructions:
+          "Chalkboard frame beside the entrance. Return it indoors at closing time.",
+        maxActiveCampaigns: 3,
+      },
+      {
+        slug: "blr-indiranagar-100ft-road-board",
+        venueName: "Indiranagar 100 Feet Road board",
+        district: "Indiranagar",
+        latitude: 12.9719,
+        longitude: 77.6412,
+        placementInstructions:
+          "Permitted community board outside the shopfront. Keep the lower third clear.",
+        maxActiveCampaigns: 3,
+      },
+      {
+        slug: "blr-btm-layout-coworking",
+        venueName: "BTM Layout coworking board",
+        district: "BTM Layout",
+        latitude: 12.9166,
+        longitude: 77.6101,
+        placementInstructions:
+          "Members' board beside the kitchen. Reception must be notified before installing.",
+        maxActiveCampaigns: 2,
+      },
+    ],
+  },
+  {
+    city: "Mumbai",
+    countryCode: "IN",
+    countryName: "India",
+    locations: [
+      {
+        slug: "bom-bandra-bandstand-board",
+        venueName: "Bandra Bandstand promenade board",
+        district: "Bandra West",
+        latitude: 19.0443,
+        longitude: 72.82,
+        placementInstructions:
+          "Promenade noticeboard frame. Sea wind: fix all four corners with the supplied clips.",
+        maxActiveCampaigns: 3,
+      },
+      {
+        slug: "bom-linking-road-cafe-window",
+        venueName: "Linking Road café window",
+        district: "Bandra West",
+        latitude: 19.0642,
+        longitude: 72.833,
+        placementInstructions:
+          "Inside the café window at eye height, static cling only. The QR must scan from the pavement.",
+        maxActiveCampaigns: 3,
+      },
+      {
+        slug: "bom-lower-parel-coworking",
+        venueName: "Lower Parel coworking lobby",
+        district: "Lower Parel",
+        latitude: 18.9953,
+        longitude: 72.8295,
+        placementInstructions:
+          "Lobby community board opposite the lifts. Sign in at reception before installing.",
+        maxActiveCampaigns: 3,
+      },
+      {
+        slug: "bom-colaba-causeway-board",
+        venueName: "Colaba Causeway traders' board",
+        district: "Colaba",
+        latitude: 18.915,
+        longitude: 72.8258,
+        placementInstructions:
+          "Traders' association board at the causeway entrance. Do not cover trader notices.",
+        maxActiveCampaigns: 2,
+      },
+      {
+        slug: "bom-powai-hiranandani-panel",
+        venueName: "Powai Hiranandani community panel",
+        district: "Powai",
+        latitude: 19.1176,
+        longitude: 72.906,
+        placementInstructions:
+          "Community events panel near the high-street entrance. Estate management must witness installation.",
+        maxActiveCampaigns: 3,
+      },
+      {
+        slug: "bom-andheri-west-cafe-board",
+        venueName: "Andheri West café board",
+        district: "Andheri West",
+        latitude: 19.1364,
+        longitude: 72.8296,
+        placementInstructions:
+          "Chalkboard frame beside the café entrance. Staff position it during opening hours only.",
+        maxActiveCampaigns: 3,
+      },
+      {
+        slug: "bom-bkc-coworking-board",
+        venueName: "BKC coworking noticeboard",
+        district: "Bandra Kurla Complex",
+        latitude: 19.066,
+        longitude: 72.868,
+        placementInstructions:
+          "Members' noticeboard by the lifts. Reception must be told before installation.",
+        maxActiveCampaigns: 3,
+      },
+      {
+        slug: "bom-kala-ghoda-gallery-wall",
+        venueName: "Kala Ghoda gallery notice wall",
+        district: "Kala Ghoda",
+        latitude: 18.9285,
+        longitude: 72.8321,
+        placementInstructions:
+          "Use the permitted paste-up panel only. The surrounding heritage facade is protected.",
+        maxActiveCampaigns: 2,
+      },
     ],
   },
 ];

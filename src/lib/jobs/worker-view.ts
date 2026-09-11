@@ -17,12 +17,28 @@ import { reportPosterMissing, recordProof } from "@/lib/jobs/proof";
 import { acceptJob, startJob } from "@/lib/jobs/service";
 import type {
   WorkerTaskDto,
+  WorkerPingDto,
   WorkerTaskStatusValue,
   WorkerWalletDto,
 } from "@/lib/jobs/types";
 import { assignPlacementWorkers } from "@/lib/onchain/placements";
 import { createProofViewUrl, hashProofObject } from "@/lib/storage/proofs";
+import { GEOFENCE_RADIUS_METERS } from "@/lib/verification/evidence-api";
 import { isCreRunnerAvailable, startVerificationRun } from "@/lib/verification/runner";
+
+/** Time a self-verifying worker must be seen on site before the photo. */
+const MIN_DWELL_SECONDS = Number(process.env.STICKERBOMB_MIN_DWELL_SECONDS ?? 30);
+/** Pings closer together than this are not stored. */
+const PING_INTERVAL_MS = 3_000;
+
+/** GPS accuracy widens the fence, never beyond 2x (matches the CRE check). */
+function insideFence(distanceMetres: number, accuracyMeters: number | null | undefined) {
+  const allowance = Math.min(
+    GEOFENCE_RADIUS_METERS * 2,
+    GEOFENCE_RADIUS_METERS + (accuracyMeters ?? 0),
+  );
+  return distanceMetres <= allowance;
+}
 
 /**
  * The Worker PWA's view of placements.
@@ -152,6 +168,74 @@ function toTask(placement: TaskRecord, userId: string): WorkerTaskDto {
     isVerifier,
     rejectionReason:
       myRejection?.status === "REJECTED" ? myRejection.rejectionReason ?? "REJECTED" : null,
+    verificationMode: placement.verificationMode,
+    geofenceRadiusMeters: GEOFENCE_RADIUS_METERS,
+    minDwellSeconds: MIN_DWELL_SECONDS,
+  };
+}
+
+export type PingResult = WorkerPingDto;
+
+/**
+ * Stores the worker's live position while they hold a job, and tells the app
+ * whether "Stick & verify" can unlock. The full trail is only ever read by
+ * the confidential CRE check.
+ */
+export async function recordPing(
+  context: WorkerContext,
+  placementId: string,
+  ping: { latitude: number; longitude: number; accuracyMeters?: number },
+): Promise<PingResult> {
+  const prisma = getPrismaClient();
+  const placement = await loadTask(placementId);
+  const job = placement.jobs.find(
+    (item) => item.workerUserId === context.userId && holdingStatuses.includes(item.status),
+  );
+  if (!job) {
+    throw new ApiError(403, "NOT_YOUR_JOB", "Location is only shared while you hold a job.");
+  }
+
+  const last = await prisma.locationPing.findFirst({
+    where: { jobId: job.id },
+    orderBy: { recordedAt: "desc" },
+    select: { recordedAt: true },
+  });
+  if (!last || Date.now() - last.recordedAt.getTime() >= PING_INTERVAL_MS) {
+    await prisma.locationPing.create({
+      data: {
+        placementId,
+        jobId: job.id,
+        workerUserId: context.userId,
+        latitude: ping.latitude,
+        longitude: ping.longitude,
+        accuracyMeters: ping.accuracyMeters ?? null,
+      },
+    });
+  }
+
+  // Time on site: the latest unbroken run of pings inside the fence.
+  const recent = await prisma.locationPing.findMany({
+    where: { jobId: job.id },
+    orderBy: { recordedAt: "desc" },
+    take: 200,
+  });
+  let arrivedAt: Date | null = null;
+  for (const item of recent) {
+    if (!insideFence(distanceInMetres(item, placement.location), item.accuracyMeters)) break;
+    arrivedAt = item.recordedAt;
+  }
+
+  const distanceMetres = distanceInMetres(ping, placement.location);
+  const inside = insideFence(distanceMetres, ping.accuracyMeters);
+  const secondsOnSite = inside && arrivedAt ? Math.floor((Date.now() - arrivedAt.getTime()) / 1000) : 0;
+
+  return {
+    distanceMetres: Math.round(distanceMetres),
+    insideFence: inside,
+    secondsOnSite,
+    readyToVerify: inside && secondsOnSite >= MIN_DWELL_SECONDS,
+    minDwellSeconds: MIN_DWELL_SECONDS,
+    radiusMeters: GEOFENCE_RADIUS_METERS,
   };
 }
 
@@ -287,6 +371,8 @@ export type PhotoProof = {
   latitude?: number;
   longitude?: number;
   accuracyMeters?: number;
+  /** The code from the poster's QR, scanned or typed from under the QR. */
+  scannedShortCode?: string;
 };
 
 /** Uploads land under `<placementId>/<userId>-…`; nothing else may be claimed. */
@@ -322,6 +408,18 @@ async function submitPhotoProof(
     throw new ApiError(403, "NOT_YOUR_JOB", "This job is not assigned to you.");
   }
 
+  const scannedShortCode = proof.scannedShortCode?.trim().toUpperCase();
+  if (!scannedShortCode) {
+    throw new ApiError(
+      422,
+      "POSTER_CODE_REQUIRED",
+      "Scan the poster's QR code, or type the code printed under it.",
+    );
+  }
+  if (scannedShortCode !== placement.asset.shortCode.toUpperCase()) {
+    throw new ApiError(422, "WRONG_POSTER", "That code does not match this job's poster.");
+  }
+
   const metres = distanceInMetres(
     { latitude: proof.latitude, longitude: proof.longitude },
     placement.location,
@@ -344,7 +442,7 @@ async function submitPhotoProof(
   // The live on-camera challenge is not in the app yet: the photo itself is the
   // response, and the window runs from when the job was started.
   await recordProof(placementId, role, context.userId, {
-    scannedShortCode: placement.asset.shortCode,
+    scannedShortCode,
     latitude: proof.latitude,
     longitude: proof.longitude,
     accuracyMeters: proof.accuracyMeters ?? null,
@@ -358,12 +456,40 @@ async function submitPhotoProof(
   });
 }
 
+/**
+ * Once every proof a placement needs is in, record the payout wallets in the
+ * escrow and start the Chainlink CRE confidential verification. Failures are
+ * logged, not thrown: the proofs are safe and settlement can be retried.
+ */
+async function startSettlement(placementId: string, appUrl: string) {
+  const placement = await loadTask(placementId);
+  if (placement.status !== PlacementStatus.READY_FOR_FINAL_VERIFICATION || !isOnchainConfigured()) {
+    return;
+  }
+
+  try {
+    for (const userId of [placement.installerUserId, placement.verifierUserId]) {
+      if (userId) await ensurePayoutWallet(userId);
+    }
+    await assignPlacementWorkers(placementId);
+    if (isCreRunnerAvailable()) await startVerificationRun(placementId, appUrl);
+  } catch (error) {
+    console.error("Could not start settlement", error);
+  }
+}
+
+/**
+ * "Stick & verify": the installer's own proof. For a self-verified placement
+ * this goes straight to the confidential check.
+ */
 export async function submitInstallProof(
   context: WorkerContext,
   placementId: string,
   proof: PhotoProof,
+  appUrl: string,
 ) {
   await submitPhotoProof(context, placementId, JobRole.INSTALLER, proof);
+  await startSettlement(placementId, appUrl);
   return getTask(context, placementId);
 }
 
@@ -397,22 +523,7 @@ export async function confirmPlacement(
   appUrl: string,
 ) {
   await submitPhotoProof(context, placementId, JobRole.VERIFIER, proof);
-
-  const placement = await loadTask(placementId);
-  if (placement.status === PlacementStatus.READY_FOR_FINAL_VERIFICATION && isOnchainConfigured()) {
-    try {
-      for (const userId of [placement.installerUserId, placement.verifierUserId]) {
-        if (userId) await ensurePayoutWallet(userId);
-      }
-      await assignPlacementWorkers(placementId);
-      if (isCreRunnerAvailable()) await startVerificationRun(placementId, appUrl);
-    } catch (error) {
-      // The proofs are safely recorded; settlement can be retried from the
-      // brand's campaign page.
-      console.error("Could not start settlement after the check", error);
-    }
-  }
-
+  await startSettlement(placementId, appUrl);
   return getTask(context, placementId);
 }
 

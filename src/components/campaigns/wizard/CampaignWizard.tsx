@@ -286,48 +286,14 @@ export default function CampaignWizard() {
     setSubmitting(true);
 
     try {
-      // Areas must be stored before locations are assigned, because the server
-      // validates each location against the campaign's own stored geography.
-      await authenticatedFetch<{ areas: unknown[] }>(
-        getAccessToken,
-        `/api/campaigns/${id}/areas`,
-        {
-          method: "PUT",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ areas: input.areas }),
-        },
-      );
-
+      // One request saves areas, strategy, locations and progress together.
       await authenticatedFetch<CampaignResponse>(
         getAccessToken,
-        `/api/campaigns/${id}`,
-        {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ locationStrategy: input.strategy }),
-        },
-      );
-
-      await authenticatedFetch<{ selectedLocationIds: string[] }>(
-        getAccessToken,
-        `/api/campaigns/${id}/locations`,
+        `/api/campaigns/${id}/placement-plan`,
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            strategy: input.strategy,
-            locationIds: input.locationIds,
-          }),
-        },
-      );
-
-      await authenticatedFetch<CampaignResponse>(
-        getAccessToken,
-        `/api/campaigns/${id}`,
-        {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ wizardStep: "CREATIVE" }),
+          body: JSON.stringify(input),
         },
       );
 

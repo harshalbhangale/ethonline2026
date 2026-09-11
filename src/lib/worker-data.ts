@@ -30,6 +30,21 @@ export function describeRejection(reason: string) {
   return code ? `Rejected: ${rejectionText[code]}.` : "Your last photo was rejected.";
 }
 
+/** What to do next about each error the proof endpoint can refuse with. */
+const submissionHelp: Record<string, string> = {
+  PHOTO_REQUIRED: "Take a photo of the poster where you put it up.",
+  POSTER_CODE_REQUIRED:
+    "Scan the QR on the poster, or type the code printed under it.",
+  WRONG_POSTER:
+    "That code belongs to a different poster. Check you are at the right one.",
+  OUTSIDE_GEOFENCE: "Move closer to the approved surface, then submit again.",
+  NOT_YOUR_JOB: "This job is no longer waiting for your photo.",
+};
+
+export function describeSubmissionError(code: string | undefined) {
+  return code ? submissionHelp[code] ?? null : null;
+}
+
 export function formatMoney(minor: string, currency: string) {
   const amount = Number(minor) / 100;
 

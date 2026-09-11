@@ -18,7 +18,7 @@ import { ApiError } from "@/lib/http/api-error";
  *
  * This is presentation only. Workers and quotes read the structured columns.
  */
-function buildAreaLabel(geography: {
+export function buildAreaLabel(geography: {
   city: string | null;
   countryName: string | null;
   radiusMeters: number | null;

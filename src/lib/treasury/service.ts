@@ -104,7 +104,7 @@ async function createTreasuryPolicy(organization: Organization) {
     const policy = await privy.policies().create({
       ...base,
       rules: buildTreasuryPolicyRules(config.usdc, config.escrow, config.chainId),
-      idempotency_key: `treasury-policy-${organization.id}`,
+      idempotency_key: `treasury-policy-${organization.id}-${config.escrow.slice(2, 10).toLowerCase()}`,
     });
     return policy.id;
   } catch (error) {
@@ -114,7 +114,7 @@ async function createTreasuryPolicy(organization: Organization) {
       const policy = await privy.policies().create({
         ...base,
         rules: buildTreasuryPolicyRules(config.usdc, config.escrow, config.chainId, false),
-        idempotency_key: `treasury-policy-basic-${organization.id}`,
+        idempotency_key: `treasury-policy-basic-${organization.id}-${config.escrow.slice(2, 10).toLowerCase()}`,
       });
       return policy.id;
     } catch (fallbackError) {
@@ -133,15 +133,31 @@ export async function ensureOrganizationTreasury(organizationId: string): Promis
     where: { id: organizationId },
   });
 
-  const existing = toTreasury(organization);
-  if (existing) return existing;
+  const escrow = getChainConfig().escrow.toLowerCase();
+  const policyCurrent =
+    Boolean(organization.treasuryPolicyId) &&
+    organization.treasuryPolicyEscrow?.toLowerCase() === escrow;
 
-  if (!organization.treasuryPolicyId) {
+  const existing = toTreasury(organization);
+  if (existing && policyCurrent) return existing;
+
+  if (!policyCurrent) {
+    // First treasury, or a new escrow was deployed: the wallet needs a policy
+    // that allows funding the escrow in use now.
     const policyId = await createTreasuryPolicy(organization);
     organization = await prisma.organization.update({
       where: { id: organizationId },
-      data: { treasuryPolicyId: policyId },
+      data: { treasuryPolicyId: policyId, treasuryPolicyEscrow: escrow },
     });
+
+    if (existing) {
+      try {
+        await getPrivyClient().wallets().update(existing.walletId, { policy_ids: [policyId] });
+      } catch (error) {
+        throw privyFailure(error, "update the treasury policy");
+      }
+      return { ...existing, policyId };
+    }
   }
 
   let wallet: { id: string; address: string };
