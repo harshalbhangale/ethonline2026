@@ -463,6 +463,18 @@ async function submitPhotoProof(
  * escrow and start the Chainlink CRE confidential verification. Failures are
  * logged, not thrown: the proofs are safe and settlement can be retried.
  */
+/**
+ * Runs settlement after the response inside a request; from a script (no
+ * request scope) it simply runs in the background.
+ */
+function settleLater(placementId: string, appUrl: string) {
+  try {
+    after(() => startSettlement(placementId, appUrl));
+  } catch {
+    void startSettlement(placementId, appUrl);
+  }
+}
+
 async function startSettlement(placementId: string, appUrl: string) {
   const placement = await loadTask(placementId);
   if (placement.status !== PlacementStatus.READY_FOR_FINAL_VERIFICATION || !isOnchainConfigured()) {
@@ -494,7 +506,7 @@ export async function submitInstallProof(
   // Settlement creates wallets and waits on chain receipts, which is far too
   // slow to hold a worker's phone on. It runs after the response instead; the
   // placement's status is what the app watches for the outcome.
-  after(() => startSettlement(placementId, appUrl));
+  settleLater(placementId, appUrl);
   return getTask(context, placementId);
 }
 
@@ -528,7 +540,7 @@ export async function confirmPlacement(
   appUrl: string,
 ) {
   await submitPhotoProof(context, placementId, JobRole.VERIFIER, proof);
-  after(() => startSettlement(placementId, appUrl));
+  settleLater(placementId, appUrl);
   return getTask(context, placementId);
 }
 

@@ -142,6 +142,14 @@ async function waitForSettlement(placementId: string) {
 async function main() {
   const context = await brand();
   const location = await prisma.location.findUniqueOrThrow({ where: { slug: LOCATION } });
+  // Earlier runs hold this venue's capacity; end them, as a brand would.
+  await prisma.campaign.updateMany({
+    where: {
+      organizationId: context.organizationId,
+      status: { in: ["FUNDED", "ASSETS_READY", "DEPLOYING", "VERIFYING", "LIVE"] },
+    },
+    data: { status: "COMPLETE" },
+  });
 
   const campaign = await prisma.campaign.create({
     data: {
