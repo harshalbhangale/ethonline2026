@@ -279,19 +279,32 @@ export default function PlacementAreaStep({
     }
   }
 
-  if (areas.length === 0 && campaign.centerLatitude === null) {
+  if (areas.length === 0) {
+    // campaign.centerLatitude is always set by the time this step is
+    // reachable (saveLocation writes it in the same request as
+    // wizardStep: "PLACEMENTS"), so the only real way to see this is
+    // deleting every area after adding one — not a missing city.
+    const cityAlreadyChosen = campaign.centerLatitude !== null;
     return (
       <Card className="px-6 py-10 text-center">
-        <h2 className="text-[18px] font-bold">Pick a city first</h2>
+        <h2 className="text-[18px] font-bold">
+          {cityAlreadyChosen ? "No areas yet" : "Pick a city first"}
+        </h2>
         <p className="mt-2 text-[13.5px] text-muted">
-          Choose the city this campaign runs in, then set the area.
+          {cityAlreadyChosen
+            ? `Add at least one area in ${campaign.city ?? "this city"} to continue.`
+            : "Choose the city this campaign runs in, then set the area."}
         </p>
         <button
           type="button"
-          onClick={onChangeCity}
+          onClick={
+            cityAlreadyChosen
+              ? () => addAreaAt({ latitude: campaign.centerLatitude!, longitude: campaign.centerLongitude! })
+              : onChangeCity
+          }
           className="mt-5 h-10 rounded-xl bg-solid px-4 text-[13px] font-semibold text-solid-ink"
         >
-          Choose a city
+          {cityAlreadyChosen ? "Add an area" : "Choose a city"}
         </button>
       </Card>
     );
