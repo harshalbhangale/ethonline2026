@@ -16,6 +16,14 @@ function hash(value: string) {
 const botPattern =
   /\b(bot|crawler|spider|crawl|slurp|curl|wget|python-requests|headless|phantomjs|puppeteer|playwright|monitoring|preview|facebookexternalhit|whatsapp|telegram|slackbot|discordbot|twitterbot|linkedinbot|bingpreview)\b/i;
 
+/**
+ * The query parameter carrying a scan's id to the brand's site.
+ *
+ * Short because it ends up in a URL a real person may see, and stable because
+ * brands paste it into their own analytics.
+ */
+export const CLICK_TOKEN_PARAM = "sb_click";
+
 export type ScanSignals = {
   referrer: string | null;
   userAgentHash: string | null;

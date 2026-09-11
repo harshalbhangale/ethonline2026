@@ -8,7 +8,7 @@
  * These rates back both the live estimate shown while choosing an area and the
  * real quote, so the two can never disagree.
  */
-export const rateCardVersion = 1;
+export const rateCardVersion = 2;
 
 export const perPlacementMinor = {
   printing: 300,
@@ -18,6 +18,24 @@ export const perPlacementMinor = {
 } as const;
 
 export const platformFeeBaseMinor = 1_000;
+
+export type AssetTypeValue = "QR_NORMAL" | "QR_MAGIC" | "QR_VERY_MAGIC" | "NFC";
+
+/**
+ * How much each asset tier multiplies per-placement fulfilment costs.
+ *
+ * A plainer QR costs the base rate; a fancier asset or an NFC tag costs more to
+ * produce and handle. The flat platform fee is never multiplied, and the
+ * contingency scales on its own because it is derived from the subtotal.
+ */
+export const assetTypeMultiplier: Record<AssetTypeValue, number> = {
+  QR_NORMAL: 1,
+  QR_MAGIC: 1,
+  QR_VERY_MAGIC: 2,
+  NFC: 4,
+};
+
+export const defaultAssetType: AssetTypeValue = "QR_NORMAL";
 
 /** Applied to the subtotal, then rounded to the nearest whole currency unit. */
 export const contingencyPercent = 9;
@@ -54,9 +72,13 @@ function roundToWholeUnit(minor: number) {
  * deliberately excludes the platform fee and contingency, which are not local
  * costs.
  */
-export function estimateLocalFulfilmentMinor(placementCount: number) {
+export function estimateLocalFulfilmentMinor(
+  placementCount: number,
+  assetType: AssetTypeValue = defaultAssetType,
+) {
   return (
     placementCount *
+    assetTypeMultiplier[assetType] *
     (perPlacementMinor.printing +
       perPlacementMinor.installation +
       perPlacementMinor.verification)
@@ -68,30 +90,34 @@ export function estimateDeploymentMinutes(placementCount: number) {
   return 15 + placementCount * 5;
 }
 
-export function computeQuote(placementCount: number): ComputedQuote {
+export function computeQuote(
+  placementCount: number,
+  assetType: AssetTypeValue = defaultAssetType,
+): ComputedQuote {
+  const multiplier = assetTypeMultiplier[assetType];
   const lines: QuoteLine[] = [
     {
       kind: "PRINTING",
       label: "Printing",
-      amountMinor: placementCount * perPlacementMinor.printing,
+      amountMinor: placementCount * perPlacementMinor.printing * multiplier,
       sortOrder: 1,
     },
     {
       kind: "INSTALLATION",
       label: "Installation",
-      amountMinor: placementCount * perPlacementMinor.installation,
+      amountMinor: placementCount * perPlacementMinor.installation * multiplier,
       sortOrder: 2,
     },
     {
       kind: "VERIFICATION",
       label: "Verification",
-      amountMinor: placementCount * perPlacementMinor.verification,
+      amountMinor: placementCount * perPlacementMinor.verification * multiplier,
       sortOrder: 3,
     },
     {
       kind: "CLEANUP_RESERVE",
       label: "Cleanup reserve",
-      amountMinor: placementCount * perPlacementMinor.cleanupReserve,
+      amountMinor: placementCount * perPlacementMinor.cleanupReserve * multiplier,
       sortOrder: 4,
     },
     {

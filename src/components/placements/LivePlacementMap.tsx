@@ -18,6 +18,7 @@ import { placementStatusLabels } from "@/lib/placements/format";
 import type {
   LiveCampaignResponse,
   LivePlacementDto,
+  PlacementStats,
 } from "@/lib/placements/live";
 
 /** Fast while someone is out working, slow when the map is only a plan. */
@@ -76,6 +77,45 @@ function relativeTime(iso: string) {
 
 function formatDistance(metres: number) {
   return metres >= 1000 ? `${(metres / 1000).toFixed(1)} km` : `${metres} m`;
+}
+
+/**
+ * Scans, arrivals and conversions for one poster.
+ *
+ * Shown as a row of counts rather than a chart: with one or two placements a
+ * chart would imply more precision than a handful of scans deserves.
+ */
+function Funnel({ stats }: { stats: PlacementStats }) {
+  if (stats.scans === 0) {
+    return (
+      <p className="mt-2 text-[12px] text-faint">
+        No scans yet. Counts appear here once the poster is up and people scan
+        it.
+      </p>
+    );
+  }
+
+  const steps: [string, number, string][] = [
+    ["Scans", stats.scans, "text-ink"],
+    ["People", stats.uniqueScanners, "text-ink"],
+    ["Landed", stats.landings, "text-scan"],
+    ["Converted", stats.conversions, "text-paid"],
+  ];
+
+  return (
+    <div className="mt-2.5 flex flex-wrap gap-x-6 gap-y-2">
+      {steps.map(([label, value, tone]) => (
+        <div key={label}>
+          <p className="text-[10.5px] font-bold uppercase tracking-[0.08em] text-faint">
+            {label}
+          </p>
+          <p className={`text-[17px] font-extrabold tracking-[-0.02em] ${tone}`}>
+            {value}
+          </p>
+        </div>
+      ))}
+    </div>
+  );
 }
 
 /**
@@ -261,6 +301,13 @@ export default function LivePlacementMap({
   if (!data || placements.length === 0) return null;
 
   const active = placements.filter((placement) => placement.worker !== null);
+  const totals = placements.reduce(
+    (running, placement) => ({
+      scans: running.scans + placement.stats.scans,
+      conversions: running.conversions + placement.stats.conversions,
+    }),
+    { scans: 0, conversions: 0 },
+  );
 
   const header = (
     <div className="flex flex-wrap items-center justify-between gap-3 border-b border-line px-5 py-4 sm:px-6">
@@ -271,47 +318,54 @@ export default function LivePlacementMap({
           positions only, never worker identities.
         </p>
       </div>
-      <span
-        className={`inline-flex shrink-0 items-center gap-2 text-[12px] font-semibold ${
-          anyActive ? "text-scan" : "text-faint"
-        }`}
-      >
+      <div className="flex shrink-0 flex-wrap items-center gap-x-5 gap-y-2">
+        <span className="text-[12px] text-muted">
+          <span className="font-bold text-ink">{totals.scans}</span> scans ·{" "}
+          <span className="font-bold text-paid">{totals.conversions}</span>{" "}
+          converted
+        </span>
         <span
-          className={`h-2 w-2 rounded-full ${
-            anyActive ? "animate-pulse bg-scan" : "bg-line"
+          className={`inline-flex items-center gap-2 text-[12px] font-semibold ${
+            anyActive ? "text-scan" : "text-faint"
           }`}
-        />
-        {anyActive
-          ? `${active.length} on the move`
-          : "Nobody on site right now"}
-      </span>
+        >
+          <span
+            className={`h-2 w-2 rounded-full ${
+              anyActive ? "animate-pulse bg-scan" : "bg-line"
+            }`}
+          />
+          {anyActive
+            ? `${active.length} on the move`
+            : "Nobody on site right now"}
+        </span>
+      </div>
     </div>
   );
 
   const roster = (
     <ul className="divide-y divide-line">
       {placements.map((placement) => (
-        <li
-          key={placement.id}
-          className="flex flex-wrap items-center justify-between gap-3 px-5 py-3 sm:px-6"
-        >
-          <div className="min-w-0">
-            <p className="truncate text-[13.5px] font-semibold">
-              {placement.venueName}
-            </p>
-            <p className="text-[12px] text-muted">
-              {placementStatusLabels[placement.status]}
-            </p>
+        <li key={placement.id} className="px-5 py-3.5 sm:px-6">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="min-w-0">
+              <p className="truncate text-[13.5px] font-semibold">
+                {placement.venueName}
+              </p>
+              <p className="text-[12px] text-muted">
+                {placementStatusLabels[placement.status]} ·{" "}
+                <span className="font-mono">{placement.shortCode}</span>
+              </p>
+            </div>
+            {placement.worker ? (
+              <p className="shrink-0 text-[12px] font-semibold text-scan">
+                {placement.worker.role === "VERIFIER" ? "Checker" : "Installer"}{" "}
+                {formatDistance(placement.worker.distanceMetres)} away ·{" "}
+                {relativeTime(placement.worker.updatedAt)}
+              </p>
+            ) : null}
           </div>
-          {placement.worker ? (
-            <p className="shrink-0 text-[12px] font-semibold text-scan">
-              {placement.worker.role === "VERIFIER" ? "Checker" : "Installer"}{" "}
-              {formatDistance(placement.worker.distanceMetres)} away ·{" "}
-              {relativeTime(placement.worker.updatedAt)}
-            </p>
-          ) : (
-            <p className="shrink-0 text-[12px] text-faint">No active job</p>
-          )}
+
+          <Funnel stats={placement.stats} />
         </li>
       ))}
     </ul>

@@ -1,4 +1,5 @@
 import { JobRole, JobStatus } from "@/generated/prisma/client";
+import { LANDING_EVENT } from "@/lib/assets/conversions";
 import type { BrandContext } from "@/lib/auth/require-brand";
 import { distanceInMetres } from "@/lib/campaigns/geo";
 import { getPrismaClient } from "@/lib/database/prisma";
@@ -11,11 +12,28 @@ const LIVE_WINDOW_MS = 10 * 60_000;
 
 const activeJobStatuses: JobStatus[] = [JobStatus.ACCEPTED, JobStatus.IN_PROGRESS, JobStatus.REJECTED_PROOF];
 
+/**
+ * The funnel for one poster. Scans and landings differ on purpose: a scan is
+ * the phone hitting the short link, a landing is the brand's page actually
+ * loading, so the gap between them is people who gave up on the way.
+ *
+ * Suspected bots are excluded from scans, so these numbers are lower and more
+ * honest than raw traffic.
+ */
+export type PlacementStats = {
+  scans: number;
+  uniqueScanners: number;
+  landings: number;
+  conversions: number;
+};
+
 export type LivePlacementDto = {
   id: string;
   status: PlacementStatusValue;
   venueName: string;
+  shortCode: string;
   venue: { latitude: number; longitude: number };
+  stats: PlacementStats;
   /** Latest position of the worker on an active job; no history, no identity. */
   worker: {
     role: "INSTALLER" | "VERIFIER";
@@ -33,9 +51,65 @@ export type LiveCampaignResponse = {
   radiusMeters: number;
 };
 
+const emptyStats: PlacementStats = {
+  scans: 0,
+  uniqueScanners: 0,
+  landings: 0,
+  conversions: 0,
+};
+
 /**
- * Delivery-style tracking for the brand: each placement's venue, and where
- * its worker is right now while a job is underway.
+ * Every poster's funnel in three grouped queries, so the cost does not grow
+ * with the number of placements.
+ */
+async function loadPlacementStats(campaignId: string) {
+  const prisma = getPrismaClient();
+  const realTraffic = { campaignId, isSuspectedBot: false };
+
+  const [scans, sessions, conversions] = await Promise.all([
+    prisma.scanEvent.groupBy({
+      by: ["assetId"],
+      where: realTraffic,
+      _count: { _all: true },
+    }),
+    // One row per distinct session, so the row count is the visitor count.
+    prisma.scanEvent.groupBy({
+      by: ["assetId", "sessionHash"],
+      where: { ...realTraffic, sessionHash: { not: null } },
+    }),
+    prisma.conversionEvent.groupBy({
+      by: ["assetId", "name"],
+      where: { campaignId },
+      _count: { _all: true },
+    }),
+  ]);
+
+  const byAsset = new Map<string, PlacementStats>();
+  const forAsset = (assetId: string) => {
+    const existing = byAsset.get(assetId);
+    if (existing) return existing;
+
+    const created = { ...emptyStats };
+    byAsset.set(assetId, created);
+    return created;
+  };
+
+  for (const row of scans) forAsset(row.assetId).scans = row._count._all;
+  for (const row of sessions) forAsset(row.assetId).uniqueScanners += 1;
+
+  for (const row of conversions) {
+    const stats = forAsset(row.assetId);
+    if (row.name === LANDING_EVENT) stats.landings += row._count._all;
+    else stats.conversions += row._count._all;
+  }
+
+  return byAsset;
+}
+
+/**
+ * Delivery-style tracking for the brand: each placement's venue, where its
+ * worker is right now while a job is underway, and how the poster is performing
+ * once it is up.
  */
 export async function getLiveCampaign(
   context: BrandContext,
@@ -48,14 +122,18 @@ export async function getLiveCampaign(
   });
   if (!campaign) throw new ApiError(404, "CAMPAIGN_NOT_FOUND", "Campaign not found.");
 
-  const placements = await prisma.placement.findMany({
-    where: { campaignId },
-    include: {
-      location: { select: { venueName: true, latitude: true, longitude: true } },
-      jobs: { where: { status: { in: activeJobStatuses } }, select: { id: true, role: true } },
-    },
-    orderBy: { createdAt: "asc" },
-  });
+  const [placements, stats] = await Promise.all([
+    prisma.placement.findMany({
+      where: { campaignId },
+      include: {
+        location: { select: { venueName: true, latitude: true, longitude: true } },
+        asset: { select: { shortCode: true } },
+        jobs: { where: { status: { in: activeJobStatuses } }, select: { id: true, role: true } },
+      },
+      orderBy: { createdAt: "asc" },
+    }),
+    loadPlacementStats(campaignId),
+  ]);
 
   const since = new Date(Date.now() - LIVE_WINDOW_MS);
   const result = await Promise.all(
@@ -72,7 +150,9 @@ export async function getLiveCampaign(
         id: placement.id,
         status: placement.status,
         venueName: placement.location.venueName,
+        shortCode: placement.asset.shortCode,
         venue: { latitude: placement.location.latitude, longitude: placement.location.longitude },
+        stats: stats.get(placement.assetId) ?? emptyStats,
         worker:
           activeJob && ping
             ? {

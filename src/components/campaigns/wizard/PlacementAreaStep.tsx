@@ -17,7 +17,12 @@ import {
   estimateDeploymentMinutes,
   estimateLocalFulfilmentMinor,
 } from "@/lib/campaigns/pricing";
-import type { CampaignDto, LocationStrategyValue } from "@/lib/campaigns/types";
+import {
+  assetTypeOptions,
+  type AssetTypeValue,
+  type CampaignDto,
+  type LocationStrategyValue,
+} from "@/lib/campaigns/types";
 import type { AvailableLocationsResponse } from "@/lib/locations/types";
 
 const MapboxGlobe = dynamic(
@@ -63,6 +68,7 @@ export default function PlacementAreaStep({
   onContinue: (input: {
     areas: DraftArea[];
     strategy: LocationStrategyValue;
+    assetType: AssetTypeValue;
     locationIds: string[];
   }) => Promise<void>;
 }) {
@@ -84,6 +90,9 @@ export default function PlacementAreaStep({
   const [addingArea, setAddingArea] = useState(false);
   const [strategy, setStrategy] = useState<LocationStrategyValue>(
     campaign.locationStrategy ?? "AUTO_APPROVED",
+  );
+  const [assetType, setAssetType] = useState<AssetTypeValue>(
+    campaign.assetType ?? "QR_NORMAL",
   );
   const [manualIds, setManualIds] = useState<Set<string>>(new Set());
   const [availability, setAvailability] =
@@ -198,7 +207,7 @@ export default function PlacementAreaStep({
       ? Math.min(requested || availableCount, availableCount)
       : manualIds.size;
 
-  const fulfilmentMinor = estimateLocalFulfilmentMinor(selectedCount);
+  const fulfilmentMinor = estimateLocalFulfilmentMinor(selectedCount, assetType);
   const deploymentMinutes = estimateDeploymentMinutes(selectedCount);
   const shortfall = requested > 0 && availableCount < requested;
   const canContinue =
@@ -255,6 +264,7 @@ export default function PlacementAreaStep({
       await onContinue({
         areas,
         strategy,
+        assetType,
         locationIds: strategy === "MANUAL_SELECTION" ? [...manualIds] : [],
       });
     } catch (caught) {
@@ -383,6 +393,42 @@ export default function PlacementAreaStep({
             ? "Click the map to place it"
             : "+ Add another area"}
       </button>
+
+      <fieldset className="mt-4 border-t border-line pt-3.5">
+        <legend className="text-[12px] font-semibold text-muted">
+          Asset type
+        </legend>
+        <div className="mt-2 grid grid-cols-2 gap-1.5">
+          {assetTypeOptions.map((option) => (
+            <label
+              key={option.value}
+              title={option.description}
+              className={`flex cursor-pointer flex-col gap-0.5 rounded-xl border px-3 py-2 transition-colors ${
+                assetType === option.value
+                  ? "border-badge bg-raised"
+                  : "border-line hover:border-muted"
+              }`}
+            >
+              <span className="flex items-center justify-between gap-2">
+                <span className="text-[13px] font-semibold">
+                  {option.emoji} {option.label}
+                </span>
+                <input
+                  type="radio"
+                  name="asset-type"
+                  className="sr-only"
+                  value={option.value}
+                  checked={assetType === option.value}
+                  onChange={() => setAssetType(option.value)}
+                />
+              </span>
+              <span className="text-[11px] font-semibold text-faint">
+                {option.priceLabel} price
+              </span>
+            </label>
+          ))}
+        </div>
+      </fieldset>
 
       <fieldset className="mt-4 border-t border-line pt-3.5">
         <legend className="text-[12px] font-semibold text-muted">

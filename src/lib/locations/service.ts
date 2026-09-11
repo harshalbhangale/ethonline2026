@@ -1,4 +1,4 @@
-import { CampaignStatus, Prisma } from "@/generated/prisma/client";
+import { AssetType, CampaignStatus, Prisma } from "@/generated/prisma/client";
 import type { BrandContext } from "@/lib/auth/require-brand";
 import { buildAreaLabel } from "@/lib/campaigns/service";
 import { getPrismaClient } from "@/lib/database/prisma";
@@ -449,10 +449,12 @@ export async function saveCampaignPlacementPlan(
   {
     areas,
     strategy,
+    assetType,
     locationIds,
   }: {
     areas: CampaignAreaInput[];
     strategy: "AUTO_APPROVED" | "MANUAL_SELECTION";
+    assetType?: AssetType;
     locationIds: string[];
   },
 ) {
@@ -544,6 +546,7 @@ export async function saveCampaignPlacementPlan(
           radiusMeters: primary.radiusMetres,
         }),
         locationStrategy: strategy,
+        ...(assetType ? { assetType } : {}),
         wizardStep: "CREATIVE",
       },
     });

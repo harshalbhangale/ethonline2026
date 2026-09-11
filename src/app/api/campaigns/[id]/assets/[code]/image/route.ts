@@ -2,6 +2,7 @@ import { renderPosterPng } from "@/lib/assets/qr";
 import { getOwnedAssetByShortCode } from "@/lib/assets/service";
 import { requireBrandContext } from "@/lib/auth/require-brand";
 import { apiErrorResponse } from "@/lib/http/api-error";
+import { downloadArtwork } from "@/lib/storage/artwork";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -22,11 +23,17 @@ export async function GET(request: Request, { params }: RouteContext) {
     const { id, code } = await params;
     const asset = await getOwnedAssetByShortCode(context, id, code);
 
-    const poster = await renderPosterPng({
+    // Re-rendered with the same artwork, so a preview matches what was printed.
+    const artwork = asset.campaign.artworkUrl
+      ? await downloadArtwork(asset.campaign.artworkUrl)
+      : null;
+
+    const { png: poster } = await renderPosterPng({
       payload: asset.qrPayload,
       headline: asset.campaign.name,
       venueName: asset.location?.venueName ?? "Approved location",
       shortCode: asset.shortCode,
+      artwork,
     });
 
     return new Response(new Uint8Array(poster), {

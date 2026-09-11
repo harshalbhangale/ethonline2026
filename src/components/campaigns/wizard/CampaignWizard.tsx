@@ -21,6 +21,7 @@ import {
 } from "@/lib/campaigns/format";
 import type { SelectedPlace } from "@/lib/campaigns/geo";
 import type {
+  AssetTypeValue,
   CampaignDto,
   CampaignResponse,
   CampaignWizardStepValue,
@@ -279,6 +280,7 @@ export default function CampaignWizard() {
         radiusMetres: number;
       }[];
       strategy: LocationStrategyValue;
+      assetType: AssetTypeValue;
       locationIds: string[];
     },
     id: string,

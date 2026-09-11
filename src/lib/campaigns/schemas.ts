@@ -82,6 +82,7 @@ const centerLatitude = z.coerce.number().min(-90).max(90);
 const centerLongitude = z.coerce.number().min(-180).max(180);
 const radiusMeters = z.coerce.number().int().min(100).max(50_000);
 const locationStrategy = z.enum(["AUTO_APPROVED", "MANUAL_SELECTION"]);
+const assetType = z.enum(["QR_NORMAL", "QR_MAGIC", "QR_VERY_MAGIC", "NFC"]);
 const wizardStep = z.enum([
   "BRIEF",
   "LOCATION",
@@ -108,6 +109,7 @@ export const campaignCreateSchema = z.object({
   countryCode: countryCode.optional(),
   countryName: countryName.optional(),
   city: city.optional(),
+  assetType: assetType.optional(),
   /** Wizard progress only. It confers no authorization. */
   wizardStep: wizardStep.optional(),
 });
@@ -128,6 +130,7 @@ export const campaignUpdateSchema = z
     centerLongitude: centerLongitude.optional(),
     radiusMeters: radiusMeters.optional(),
     locationStrategy: locationStrategy.optional(),
+    assetType: assetType.optional(),
     wizardStep: wizardStep.optional(),
   })
   .refine((value) => Object.values(value).some((item) => item !== undefined), {

@@ -24,6 +24,7 @@ const bodySchema = z.object({
     .min(1)
     .max(12),
   strategy: z.enum(["AUTO_APPROVED", "MANUAL_SELECTION"]),
+  assetType: z.enum(["QR_NORMAL", "QR_MAGIC", "QR_VERY_MAGIC", "NFC"]).optional(),
   locationIds: z.array(z.string().min(1)).max(1_000).default([]),
 });
 

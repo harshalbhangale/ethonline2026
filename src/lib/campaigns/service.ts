@@ -57,6 +57,7 @@ function toCampaignDto(campaign: Campaign): CampaignDto {
         : formatMinorUnits(campaign.budgetLimitMinor),
     destinationUrl: campaign.destinationUrl,
     deadline: campaign.deadline?.toISOString() ?? null,
+    assetType: campaign.assetType,
 
     areaLabel: campaign.areaLabel,
     countryCode: campaign.countryCode,
@@ -113,6 +114,7 @@ export async function createCampaign(
       budgetLimitMinor: input.budgetLimit ?? null,
       destinationUrl: input.destinationUrl ?? null,
       deadline: input.deadline ?? null,
+      ...(input.assetType ? { assetType: input.assetType } : {}),
       countryCode: input.countryCode ?? null,
       countryName: input.countryName ?? null,
       city: input.city ?? null,
@@ -193,6 +195,7 @@ export async function updateCampaign(
   if (input.radiusMeters !== undefined) data.radiusMeters = input.radiusMeters;
   if (input.locationStrategy !== undefined)
     data.locationStrategy = input.locationStrategy;
+  if (input.assetType !== undefined) data.assetType = input.assetType;
   if (input.wizardStep !== undefined) data.wizardStep = input.wizardStep;
 
   // The label always follows the structured geography it describes.
