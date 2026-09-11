@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import type { ReactNode } from "react";
@@ -107,8 +108,11 @@ export default function WorkerLayout({ children }: { children: ReactNode }) {
     <WorkerProvider>
       <div className="mx-auto flex min-h-screen w-full max-w-[520px] flex-col bg-[var(--bg)]">
         <header className="sticky top-0 z-10 flex items-center justify-between gap-3 border-b border-[var(--line)] bg-[var(--bg)]/90 px-5 py-4 backdrop-blur">
-          <span className="text-[17px] font-extrabold tracking-[-0.02em]">
-            StickerBomb
+          <span className="flex items-center gap-2">
+            <Image src="/logo_remove.png" alt="StickerBomb" width={50} height={50} className="h-17 w-17 object-contain" />
+            <span className="text-[17px] font-extrabold tracking-[-0.02em]">
+              StickerBomb
+            </span>
           </span>
           <div className="flex items-center gap-2">
             <span className="flex items-center gap-2 rounded-full border border-[var(--line)] px-3 py-1.5 text-[12px] text-[var(--muted)]">

@@ -1,6 +1,7 @@
 "use client";
 
 import { usePrivy, useWallets } from "@privy-io/react-auth";
+import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState, type ReactNode } from "react";
@@ -73,13 +74,7 @@ function SearchIcon() {
 
 function Mark() {
   return (
-    <svg viewBox="0 0 24 24" className="h-[22px] w-[22px]" fill="none">
-      <rect x="3" y="3" width="18" height="18" rx="5" stroke="currentColor" strokeWidth="1.7" />
-      <rect x="6.5" y="6.5" width="4" height="4" rx="1" fill="currentColor" />
-      <rect x="13.5" y="6.5" width="4" height="4" rx="1" fill="currentColor" />
-      <rect x="6.5" y="13.5" width="4" height="4" rx="1" fill="currentColor" />
-      <rect x="13.5" y="13.5" width="4" height="4" rx="1" fill="currentColor" opacity="0.35" />
-    </svg>
+    <Image src="/logo_remove.png" alt="StickerBomb" width={55} height={55} className="h-[52px] w-[52px] object-contain" />
   );
 }
 
