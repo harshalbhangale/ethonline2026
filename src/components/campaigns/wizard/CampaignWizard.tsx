@@ -179,6 +179,21 @@ export default function CampaignWizard() {
     router.replace(`/brand/new?${params.toString()}`);
   }
 
+  /**
+   * Applies a save's response locally instead of waiting on a re-fetch.
+   *
+   * goToStep only ever changes the URL; the effect that re-fetches the
+   * campaign keys on campaignId, not the step param, so on every step past
+   * the first (which is the one save that does change campaignId) nothing
+   * would otherwise notice the step advanced. The wizard would keep
+   * rendering the step just saved, forever, until the page was reloaded —
+   * exactly the "continue does nothing" symptom this fixes.
+   */
+  function applySavedCampaign(saved: CampaignDto) {
+    const scope = `${userId}:${saved.id}`;
+    setLoadState({ scope, campaign: saved, loading: false, error: null });
+  }
+
   async function createFromBrief(values: BriefStepValues) {
     setSubmitting(true);
 
@@ -206,6 +221,7 @@ export default function CampaignWizard() {
         },
       );
 
+      applySavedCampaign(response.campaign);
       goToStep("LOCATION", response.campaign.id);
     } finally {
       setSubmitting(false);
@@ -216,7 +232,7 @@ export default function CampaignWizard() {
     setSubmitting(true);
 
     try {
-      await authenticatedFetch<CampaignResponse>(
+      const response = await authenticatedFetch<CampaignResponse>(
         getAccessToken,
         `/api/campaigns/${id}`,
         {
@@ -238,6 +254,7 @@ export default function CampaignWizard() {
         },
       );
 
+      applySavedCampaign(response.campaign);
       goToStep("LOCATION", id);
     } finally {
       setSubmitting(false);
@@ -248,7 +265,7 @@ export default function CampaignWizard() {
     setSubmitting(true);
 
     try {
-      await authenticatedFetch<CampaignResponse>(
+      const response = await authenticatedFetch<CampaignResponse>(
         getAccessToken,
         `/api/campaigns/${id}`,
         {
@@ -270,6 +287,7 @@ export default function CampaignWizard() {
         },
       );
 
+      applySavedCampaign(response.campaign);
       goToStep("PLACEMENTS", id);
     } finally {
       setSubmitting(false);
@@ -294,7 +312,7 @@ export default function CampaignWizard() {
 
     try {
       // One request saves areas, strategy, locations and progress together.
-      await authenticatedFetch<CampaignResponse>(
+      const response = await authenticatedFetch<CampaignResponse>(
         getAccessToken,
         `/api/campaigns/${id}/placement-plan`,
         {
@@ -304,6 +322,7 @@ export default function CampaignWizard() {
         },
       );
 
+      applySavedCampaign(response.campaign);
       goToStep("CREATIVE", id);
     } finally {
       setSubmitting(false);
@@ -314,7 +333,7 @@ export default function CampaignWizard() {
     setSubmitting(true);
 
     try {
-      await authenticatedFetch<CampaignResponse>(
+      const response = await authenticatedFetch<CampaignResponse>(
         getAccessToken,
         `/api/campaigns/${id}`,
         {
@@ -324,6 +343,7 @@ export default function CampaignWizard() {
         },
       );
 
+      applySavedCampaign(response.campaign);
       goToStep("REVIEW", id);
     } finally {
       setSubmitting(false);
