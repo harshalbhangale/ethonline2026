@@ -8,8 +8,7 @@ import BriefStep, {
   type BriefStepValues,
 } from "@/components/campaigns/wizard/BriefStep";
 import CreativeStep from "@/components/campaigns/wizard/CreativeStep";
-import LocationStep from "@/components/campaigns/wizard/LocationStep";
-import PlacementAreaStep from "@/components/campaigns/wizard/PlacementAreaStep";
+import WhereStep from "@/components/campaigns/wizard/WhereStep";
 import ReviewAndFundStep from "@/components/campaigns/wizard/ReviewAndFundStep";
 import WizardChrome from "@/components/campaigns/wizard/WizardChrome";
 import { Card } from "@/components/ui";
@@ -207,15 +206,13 @@ export default function CampaignWizard() {
           body: JSON.stringify({
             name: values.name,
             briefText: values.briefText,
-            placementCount: values.placementCount,
-            budgetLimit: values.budgetLimit,
-            deadline: values.deadline,
-            city: values.city,
-            ...(values.countryCode ? { countryCode: values.countryCode } : {}),
-            countryName: values.countryName,
+            ...(values.placementCount !== null ? { placementCount: values.placementCount } : {}),
+            ...(values.budgetLimit ? { budgetLimit: values.budgetLimit } : {}),
+            ...(values.deadline ? { deadline: values.deadline } : {}),
             ...(values.destinationUrl
               ? { destinationUrl: values.destinationUrl }
               : {}),
+            // Where it runs is chosen on the next step, not guessed here.
             wizardStep: "LOCATION",
           }),
         },
@@ -241,12 +238,9 @@ export default function CampaignWizard() {
           body: JSON.stringify({
             name: values.name,
             briefText: values.briefText,
-            placementCount: values.placementCount,
-            budgetLimit: values.budgetLimit,
-            deadline: values.deadline,
-            city: values.city,
-            ...(values.countryCode ? { countryCode: values.countryCode } : {}),
-            countryName: values.countryName,
+            ...(values.placementCount !== null ? { placementCount: values.placementCount } : {}),
+            ...(values.budgetLimit ? { budgetLimit: values.budgetLimit } : {}),
+            ...(values.deadline ? { deadline: values.deadline } : {}),
             ...(values.destinationUrl
               ? { destinationUrl: values.destinationUrl }
               : {}),
@@ -456,22 +450,12 @@ export default function CampaignWizard() {
         />
       ) : null}
 
-      {step === "LOCATION" && campaign ? (
-        <LocationStep
+      {(step === "LOCATION" || step === "PLACEMENTS") && campaign ? (
+        <WhereStep
           campaign={campaign}
           submitting={submitting}
-          onContinue={(place) => saveLocation(place, campaign.id)}
-        />
-      ) : null}
-
-      {step === "PLACEMENTS" && campaign ? (
-        <PlacementAreaStep
-          campaign={campaign}
-          submitting={submitting}
+          onChooseCity={(place) => saveLocation(place, campaign.id)}
           onContinue={(input) => savePlacementArea(input, campaign.id)}
-          // Choosing the city is the first half of this same stage, so this
-          // reads as changing a value rather than going back a step.
-          onChangeCity={() => goToStep("LOCATION", campaign.id)}
         />
       ) : null}
 

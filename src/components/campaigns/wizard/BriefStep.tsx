@@ -4,7 +4,6 @@ import { useMemo, useState, type FormEvent } from "react";
 import { Badge, Card } from "@/components/ui";
 import { ClientApiError } from "@/lib/api/authenticated-fetch";
 import { parseDeadlineInput } from "@/lib/campaigns/deadline";
-import { findPlaceByCity } from "@/lib/campaigns/places";
 import type { CampaignDto } from "@/lib/campaigns/types";
 import { parseBrief } from "@/lib/parseBrief";
 
@@ -20,7 +19,12 @@ const sampleNames = [
   "Shoreditch weekend push",
 ];
 
-type BriefFieldKey = "placements" | "city" | "countryName" | "deadline" | "budget";
+/**
+ * Only what this step can genuinely detect and might be worth double
+ * checking. City lives on the next step now, where it's actually chosen from
+ * real inventory rather than typed and hoped for.
+ */
+type BriefFieldKey = "placements" | "deadline" | "budget";
 
 const fields: {
   key: BriefFieldKey;
@@ -29,8 +33,6 @@ const fields: {
   numeric?: boolean;
 }[] = [
   { key: "placements", label: "Placements", placeholder: "10", numeric: true },
-  { key: "city", label: "City", placeholder: "New York" },
-  { key: "countryName", label: "Country", placeholder: "United States" },
   { key: "deadline", label: "Deadline", placeholder: "Tomorrow" },
   { key: "budget", label: "Budget", placeholder: "300", numeric: true },
 ];
@@ -38,19 +40,21 @@ const fields: {
 export type BriefStepValues = {
   name: string;
   briefText: string;
-  placementCount: number;
-  budgetLimit: string;
-  deadline: string;
-  city: string;
-  countryCode: string;
-  countryName: string;
+  placementCount: number | null;
+  budgetLimit: string | null;
+  deadline: string | null;
   destinationUrl: string | null;
 };
 
-type FieldErrors = Partial<
-  Record<BriefFieldKey | "name" | "brief" | "form", string>
->;
+type FieldErrors = Partial<Record<BriefFieldKey | "name" | "brief" | "form", string>>;
 
+/**
+ * Just enough to start a draft: a name and one sentence. Placements, budget
+ * and deadline are picked up automatically and shown for a quick check, but
+ * none of them block Continue — a brand can set them here, on the quote, or
+ * on the review step, whichever they reach first. Where the campaign runs is
+ * the next step's job entirely, not asked here at all.
+ */
 export default function BriefStep({
   campaign,
   submitting,
@@ -69,10 +73,6 @@ export default function BriefStep({
             ...(campaign.placementCount !== null
               ? { placements: String(campaign.placementCount) }
               : {}),
-            ...(campaign.city ? { city: campaign.city } : {}),
-            ...(campaign.countryName
-              ? { countryName: campaign.countryName }
-              : {}),
             ...(campaign.budgetLimit ? { budget: campaign.budgetLimit } : {}),
             ...(campaign.deadline
               ? { deadline: new Date(campaign.deadline).toLocaleString() }
@@ -86,19 +86,12 @@ export default function BriefStep({
 
   const values: Record<BriefFieldKey, string> = {
     placements: edits.placements ?? parsed.placements,
-    city: edits.city ?? parsed.city,
-    countryName: edits.countryName ?? parsed.countryName,
     deadline: edits.deadline ?? parsed.deadline,
     budget: edits.budget ?? parsed.budget,
   };
 
   const detected = fields.filter((field) => values[field.key].trim()).length;
-  const canContinue = Boolean(
-    name.trim() &&
-      text.trim().length >= 10 &&
-      detected === fields.length &&
-      !submitting,
-  );
+  const canContinue = Boolean(name.trim() && text.trim().length >= 10 && !submitting);
 
   function update(key: BriefFieldKey, value: string) {
     setEdits((previous) => ({ ...previous, [key]: value }));
@@ -116,9 +109,32 @@ export default function BriefStep({
     event.preventDefault();
 
     const errors: FieldErrors = {};
-    const placementCount = Number(values.placements);
-    const deadline = parseDeadlineInput(values.deadline);
-    const budget = values.budget.trim().replace(/^\$/, "");
+
+    // Each of these is optional, but if something was typed into it, it has
+    // to actually parse — an unreadable deadline should not silently vanish.
+    let placementCount: number | null = null;
+    if (values.placements.trim()) {
+      placementCount = Number(values.placements);
+      if (!Number.isInteger(placementCount) || placementCount < 1) {
+        errors.placements = "Enter a whole number of placements.";
+      }
+    }
+
+    let deadline: Date | null = null;
+    if (values.deadline.trim()) {
+      deadline = parseDeadlineInput(values.deadline);
+      if (!deadline) {
+        errors.deadline = "Use a future date, time, or a phrase like ‘tomorrow’.";
+      }
+    }
+
+    let budget: string | null = null;
+    if (values.budget.trim()) {
+      budget = values.budget.trim().replace(/^\$/, "");
+      if (!/^\d+(?:\.\d{1,2})?$/.test(budget)) {
+        errors.budget = "Enter a positive amount with up to two decimals.";
+      }
+    }
 
     if (name.trim().length < 2) {
       errors.name = "Give the campaign a name of at least two characters.";
@@ -126,34 +142,8 @@ export default function BriefStep({
     if (text.trim().length < 10) {
       errors.brief = "Describe the campaign in a full sentence.";
     }
-    if (!Number.isInteger(placementCount) || placementCount < 1) {
-      errors.placements = "Enter a whole number of placements.";
-    }
-    if (!values.city.trim()) {
-      errors.city = "Enter the city this campaign runs in.";
-    }
-    if (!values.countryName.trim()) {
-      errors.countryName = "Enter the country this campaign runs in.";
-    }
-    if (!deadline) {
-      errors.deadline = "Use a future date, time, or a phrase like ‘tomorrow’.";
-    }
-    if (!/^\d+(?:\.\d{1,2})?$/.test(budget)) {
-      errors.budget = "Enter a positive amount with up to two decimals.";
-    }
 
-    // The country code is resolved from the gazetteer. If a brand types a
-    // country we do not know, the map step will establish it precisely.
-    const place =
-      findPlaceByCity(values.city) ??
-      (parsed.countryCode
-        ? {
-            countryCode: parsed.countryCode,
-            countryName: parsed.countryName,
-          }
-        : null);
-
-    if (Object.keys(errors).length > 0 || !deadline) {
+    if (Object.keys(errors).length > 0) {
       setFieldErrors(errors);
       return;
     }
@@ -166,10 +156,7 @@ export default function BriefStep({
         briefText: text.trim(),
         placementCount,
         budgetLimit: budget,
-        deadline: deadline.toISOString(),
-        city: values.city.trim(),
-        countryCode: place?.countryCode ?? "",
-        countryName: values.countryName.trim(),
+        deadline: deadline ? deadline.toISOString() : null,
         destinationUrl: parsed.destination || null,
       });
     } catch (caught) {
@@ -187,9 +174,11 @@ export default function BriefStep({
       <Card gradient className="p-6 sm:p-8">
         <div className="mb-5 flex flex-wrap items-center gap-3">
           <Badge>Campaign brief</Badge>
-          <span className="text-[13px] text-faint">
-            {detected} of {fields.length} details found
-          </span>
+          {detected > 0 ? (
+            <span className="text-[13px] text-faint">
+              {detected} of {fields.length} details found
+            </span>
+          ) : null}
         </div>
 
         <textarea
@@ -223,11 +212,10 @@ export default function BriefStep({
 
       <Card className="overflow-hidden">
         <div className="border-b border-line px-6 py-4">
-          <h2 className="text-[16px] font-bold tracking-[-0.01em]">
-            Detected details
-          </h2>
+          <h2 className="text-[16px] font-bold tracking-[-0.01em]">Name it</h2>
           <p className="text-[13px] text-muted">
-            Correct anything we misread. You will choose the exact area on the map next.
+            Placements, budget and deadline are picked up below if you mention them —
+            correct anything we misread, or leave them for later. Where it runs is next.
           </p>
         </div>
 
@@ -248,19 +236,13 @@ export default function BriefStep({
           ) : null}
         </label>
 
-        <div className="grid gap-px bg-line sm:grid-cols-2">
+        <div className="grid gap-px bg-line sm:grid-cols-3">
           {fields.map((field) => {
             const value = values[field.key];
-            const auto = Boolean(
-              parsed[field.key === "placements" ? "placements" : field.key] &&
-                edits[field.key] === undefined,
-            );
+            const auto = Boolean(parsed[field.key] && edits[field.key] === undefined);
 
             return (
-              <label
-                key={field.key}
-                className="flex flex-col gap-1.5 bg-surface px-6 py-4"
-              >
+              <label key={field.key} className="flex flex-col gap-1.5 bg-surface px-6 py-4">
                 <span className="flex items-center gap-2 text-[13px] font-medium text-muted">
                   {field.label}
                   {auto ? (
@@ -283,9 +265,7 @@ export default function BriefStep({
                   />
                 </div>
                 {fieldErrors[field.key] ? (
-                  <span className="text-[12px] text-fail">
-                    {fieldErrors[field.key]}
-                  </span>
+                  <span className="text-[12px] text-fail">{fieldErrors[field.key]}</span>
                 ) : null}
               </label>
             );
