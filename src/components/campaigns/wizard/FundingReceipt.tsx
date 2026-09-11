@@ -82,7 +82,7 @@ export default function FundingReceipt({
         <ReceiptPrinter.Root stage={stage} aria-label="Funding receipt">
           <ReceiptPrinter.Machine>
             <ReceiptPrinter.Header>
-              <Image src="/logo_remove.png" alt="" width={28} height={28} className="size-7 object-contain" />
+              <Image src="/logo_remove.png" alt="" width={120} height={72} className="h-6 w-auto object-contain" />
               <span className="pt-1 font-mono text-[10.5px] uppercase tracking-[0.14em] text-faint">
                 Escrow · Sepolia
               </span>

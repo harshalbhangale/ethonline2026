@@ -80,7 +80,7 @@ function SearchIcon() {
 
 function Mark() {
   return (
-    <Image src="/logo_remove.png" alt="StickerBomb" width={55} height={55} className="h-[52px] w-[52px] object-contain" />
+    <Image src="/logo_remove.png" alt="StickerBomb" width={180} height={108} priority className="h-9 w-auto object-contain" />
   );
 }
 

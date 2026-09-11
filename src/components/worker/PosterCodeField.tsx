@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 /**
  * The QR encodes the poster's scan link, so a decode gives a URL whose last
@@ -33,8 +33,6 @@ export default function PosterCodeField({
   const [cameraError, setCameraError] = useState<string | null>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
-
-  const stop = useCallback(() => setScanning(false), []);
 
   useEffect(() => {
     if (!scanning) return;
@@ -146,7 +144,6 @@ export default function PosterCodeField({
         id="poster-code"
         value={value}
         onChange={(event) => onChange(event.target.value.toUpperCase())}
-        onBlur={stop}
         disabled={disabled}
         autoCapitalize="characters"
         autoComplete="off"
@@ -160,7 +157,9 @@ export default function PosterCodeField({
       )}
 
       <p className="mt-2 text-[13px] leading-relaxed text-[var(--faint)]">
-        This proves you are standing at the right poster.
+        {value.trim()
+          ? "Code captured. It proves you are standing at the right poster."
+          : "This proves you are standing at the right poster."}
       </p>
     </div>
   );

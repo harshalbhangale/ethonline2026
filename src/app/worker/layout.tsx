@@ -5,6 +5,8 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import type { ReactNode } from "react";
 import { usePrivy } from "@privy-io/react-auth";
+import AccountMenu from "@/components/worker/AccountMenu";
+import OfflineBanner from "@/components/worker/OfflineBanner";
 import { useWorker, WorkerProvider } from "@/components/worker/WorkerStore";
 import WorkerSignIn from "@/components/worker/WorkerSignIn";
 
@@ -88,7 +90,7 @@ function ActiveJobBar() {
 
 export default function WorkerLayout({ children }: { children: ReactNode }) {
   const pathname = usePathname();
-  const { ready, authenticated, user, logout } = usePrivy();
+  const { ready, authenticated } = usePrivy();
 
   if (!ready) {
     return (
@@ -102,31 +104,20 @@ export default function WorkerLayout({ children }: { children: ReactNode }) {
     return <WorkerSignIn />;
   }
 
-  const me = user?.wallet?.address ?? `privy_${user?.id}`;
-
   return (
     <WorkerProvider>
       <div className="mx-auto flex min-h-screen w-full max-w-[520px] flex-col bg-[var(--bg)]">
         <header className="sticky top-0 z-10 flex items-center justify-between gap-3 border-b border-[var(--line)] bg-[var(--bg)]/90 px-5 py-4 backdrop-blur">
           <span className="flex items-center gap-2">
-            <Image src="/logo_remove.png" alt="StickerBomb" width={50} height={50} className="h-17 w-17 object-contain" />
+            <Image src="/logo_remove.png" alt="StickerBomb" width={160} height={96} priority className="h-8 w-auto object-contain" />
             <span className="text-[17px] font-extrabold tracking-[-0.02em]">
               StickerBomb
             </span>
           </span>
-          <div className="flex items-center gap-2">
-            <span className="flex items-center gap-2 rounded-full border border-[var(--line)] px-3 py-1.5 text-[12px] text-[var(--muted)]">
-              <span className="h-1.5 w-1.5 rounded-full bg-[var(--good)]" />
-              {me.startsWith("0x") ? `${me.slice(0, 6)}…${me.slice(-4)}` : "Signed in"}
-            </span>
-            <button
-              onClick={logout}
-              className="px-1 text-[12px] font-medium text-[var(--faint)] hover:text-[var(--ink)]"
-            >
-              Sign out
-            </button>
-          </div>
+          <AccountMenu />
         </header>
+
+        <OfflineBanner />
 
         <main className="flex-1 px-5 pb-44 pt-5">{children}</main>
 

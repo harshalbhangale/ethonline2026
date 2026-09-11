@@ -28,7 +28,7 @@ type EntryState = {
 
 function Mark() {
   return (
-    <Image src="/logo_remove.png" alt="StickerBomb" width={70} height={70} className="h-25 w-25 object-contain" />
+    <Image src="/logo_remove.png" alt="StickerBomb" width={220} height={132} priority className="h-14 w-auto object-contain" />
   );
 }
 
