@@ -8,12 +8,14 @@ import LivePresencePanel, {
 } from "@/components/worker/LivePresence";
 import VenueMap from "@/components/worker/VenueMap";
 import PosterCodeField from "@/components/worker/PosterCodeField";
+import ProofChecklist from "@/components/worker/ProofChecklist";
 import SpotPhoto from "@/components/worker/SpotPhoto";
 import { useWorker } from "@/components/worker/WorkerStore";
 import { ClientApiError } from "@/lib/api/authenticated-fetch";
 import {
   describeRejection,
   describeSubmissionError,
+  feeForWorker,
   formatDate,
   formatMoney,
 } from "@/lib/worker-data";
@@ -266,10 +268,7 @@ export default function JobDetail({
           </p>
         </div>
         <span className="shrink-0 text-[24px] font-bold tracking-[-0.02em]">
-          {formatMoney(
-            isChecker ? job.verifierFeeMinor : job.installerFeeMinor,
-            job.currency,
-          )}
+          {formatMoney(feeForWorker(job, isChecker), job.currency)}
         </span>
       </div>
 
@@ -336,6 +335,11 @@ export default function JobDetail({
             disabled={acting}
           />
           {captureBlock}
+          <ProofChecklist
+            onSite={!awaitingArrival}
+            hasCode={scannedShortCode.length > 0}
+            hasPhoto={Boolean(photo)}
+          />
           <button
             disabled={!canSubmitProof}
             onClick={() =>
@@ -411,6 +415,11 @@ export default function JobDetail({
             disabled={acting}
           />
           {captureBlock}
+          <ProofChecklist
+            onSite={!awaitingArrival}
+            hasCode={scannedShortCode.length > 0}
+            hasPhoto={Boolean(photo)}
+          />
           <div className="mt-4 flex gap-3">
             <button
               disabled={!canSubmitProof}
