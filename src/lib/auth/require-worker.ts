@@ -42,6 +42,6 @@ export async function requireWorkerContext(
   return {
     userId: user.userId,
     privyUserId: user.privyUserId,
-    displayName: profile.displayName,
+    displayName: profile.displayName ?? "Worker",
   };
 }

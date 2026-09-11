@@ -11,7 +11,8 @@ const jobTransitions: Record<JobStatus, readonly JobStatus[]> = {
   OPEN: ["RESERVED", "ACCEPTED", "CANCELLED", "EXPIRED"],
   RESERVED: ["ACCEPTED", "OPEN", "CANCELLED", "EXPIRED"],
   ACCEPTED: ["IN_PROGRESS", "OPEN", "CANCELLED", "EXPIRED"],
-  IN_PROGRESS: ["PROOF_SUBMITTED", "CANCELLED", "EXPIRED"],
+  // OPEN: a verifier who could not find the poster releases the check.
+  IN_PROGRESS: ["PROOF_SUBMITTED", "OPEN", "CANCELLED", "EXPIRED"],
   PROOF_SUBMITTED: ["ACCEPTED_PROOF", "REJECTED_PROOF"],
   // A rejected proof is recaptured on the same job.
   REJECTED_PROOF: ["IN_PROGRESS", "CANCELLED"],

@@ -17,7 +17,7 @@ export type MeResponse = {
   } | null;
   role: OrganizationRoleValue | null;
   worker: {
-    displayName: string;
+    displayName: string | null;
     selfieCheckStatus: SelfieCheckStatusValue;
   } | null;
 };

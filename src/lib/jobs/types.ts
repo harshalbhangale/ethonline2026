@@ -73,3 +73,61 @@ export type WorkerEarningsResponse = {
   pending: string;
   completedJobs: number;
 };
+
+/** A job's status as the Worker PWA shows it to one worker. */
+export type WorkerTaskStatusValue =
+  | "OPEN"
+  | "ACCEPTED"
+  | "AWAITING_CHECK"
+  | "CHECK_ACCEPTED"
+  | "IN_REVIEW"
+  | "NEEDS_RECAPTURE"
+  | "VERIFIED"
+  | "REJECTED"
+  | "EXPIRED";
+
+/**
+ * One poster as the Worker PWA sees it: the placement, from the viewing
+ * worker's point of view as installer or checker.
+ */
+export type WorkerTaskDto = {
+  id: string;
+  status: WorkerTaskStatusValue;
+  campaignName: string;
+  /** Generic ("Approved surface in …") until the worker has accepted. */
+  venueName: string;
+  city: string;
+  /** Rounded to about 1 km until the worker has accepted. */
+  latitude: number;
+  longitude: number;
+  placementInstructions: string | null;
+  shortCode: string;
+  installerFeeMinor: string;
+  verifierFeeMinor: string;
+  currency: string;
+  deadline: string | null;
+  proofAt: string | null;
+  checkedAt: string | null;
+  isInstaller: boolean;
+  isVerifier: boolean;
+  /** Why this worker's last photo was rejected, when a recapture is needed. */
+  rejectionReason: string | null;
+  /** Signed, short-lived. Only set on the single-job endpoint. */
+  proofPhotoUrl?: string | null;
+};
+
+export type WorkerWalletDto = {
+  earnedMinor: string;
+  pendingMinor: string;
+  currency: string;
+  /** The Privy wallet escrow payouts are sent to. */
+  payoutAddress: string | null;
+  history: {
+    id: string;
+    kind: string;
+    amountMinor: string;
+    venueName: string | null;
+    createdAt: string;
+    explorerUrl: string | null;
+  }[];
+};

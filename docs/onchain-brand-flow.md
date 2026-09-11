@@ -85,6 +85,16 @@ reported to the app (brand timeline) and, as a DON-signed report, written to
 Brands never see coordinates or worker identities: the brand API returns proof
 *status* only.
 
+## Worker PWA
+
+Real workers reach the same settlement from their phones (`/worker`): accept a
+job, upload a photo straight to private storage with a GPS fix, and an
+independent checker confirms with their own photo. Confirming the check records
+both Privy payout wallets in the escrow and starts the confidential CRE
+verification. Photo bytes are fingerprinted (sha256) so the enclave can reject
+reused photos. `npm run e2e:worker` runs this flow on Sepolia, including a
+"poster missing" report and recapture.
+
 ## Running it
 
 ```bash

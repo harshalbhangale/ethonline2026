@@ -19,7 +19,8 @@
     "db:studio": "prisma studio",
     "contracts:test": "cd contracts && forge test",
     "cre:test": "cd cre/placement-verifier && bun test",
-    "e2e:sepolia": "node scripts/run-ts.cjs scripts/e2e-sepolia.ts"
+    "e2e:sepolia": "node scripts/run-ts.cjs scripts/e2e-sepolia.ts",
+    "e2e:worker": "node scripts/run-ts.cjs scripts/e2e-worker.ts"
   },
   "dependencies": {
     "@mapbox/search-js-react": "1.6.0",
@@ -27,6 +28,7 @@
     "@prisma/client": "7.10.0",
     "@privy-io/node": "0.34.0",
     "@privy-io/react-auth": "^3.41.0",
+    "@supabase/supabase-js": "^2.116.0",
     "dotenv": "17.4.2",
     "jsqr": "1.4.0",
     "mapbox-gl": "3.30.0",

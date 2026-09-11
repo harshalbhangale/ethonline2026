@@ -9,30 +9,27 @@ import {
   type Placement,
 } from "@/generated/prisma/client";
 import type { BrandContext } from "@/lib/auth/require-brand";
-import { perPlacementMinor } from "@/lib/campaigns/pricing";
 import { isOnchainConfigured } from "@/lib/chain/config";
 import { getPrismaClient } from "@/lib/database/prisma";
 import { ensureDemoWorkers, type DemoWorker } from "@/lib/demo/workers";
 import { ApiError } from "@/lib/http/api-error";
+import { recordProof } from "@/lib/jobs/proof";
 import { acceptJob, startJob } from "@/lib/jobs/service";
 import { assignPlacementWorkers } from "@/lib/onchain/placements";
 import {
   listCampaignPlacements,
   openInstallationJobs,
 } from "@/lib/placements/service";
-import {
-  assertJobTransition,
-  assertPlacementTransition,
-} from "@/lib/placements/state";
 import type { PlacementListResponse } from "@/lib/placements/types";
 import { startVerificationRun } from "@/lib/verification/runner";
 
 /**
- * Development-only shortcuts for rehearsing the demo without the Worker PWA.
+ * Development-only shortcuts for rehearsing the demo without phones.
  *
  * Off unless NEXT_PUBLIC_DEMO_MODE is "true". Every action still requires the
  * caller to own the campaign, and every step goes through the same job rules,
- * onchain calls and confidential verification a real worker would trigger.
+ * proof recording, onchain calls and confidential verification as the Worker
+ * PWA.
  */
 export function isDemoMode() {
   return process.env.NEXT_PUBLIC_DEMO_MODE === "true";
@@ -65,83 +62,31 @@ type PlacementWithContext = Placement & {
   jobs: Job[];
   location: Location;
   asset: { shortCode: string };
-  campaign: { currency: string };
 };
 
-/** Records one proof exactly as the Worker PWA would, then moves the job on. */
+/** A proof as the Worker PWA would capture it, through the shared recorder. */
 async function submitProof(
   placement: PlacementWithContext,
   role: JobRole,
   worker: DemoWorker,
-  options: { fraudulent: boolean; movePlacement: boolean },
+  fraudulent: boolean,
 ) {
   const now = Date.now();
   const jitter = () => (Math.random() - 0.5) * 0.0002; // about ±11 m
-  const offset = options.fraudulent ? 0.02 : 0; // about 2.2 km
+  const offset = fraudulent ? 0.02 : 0; // about 2.2 km
   const symbol = randomChallenge();
 
-  await getPrismaClient().$transaction(async (transaction) => {
-    const job = await transaction.job.findFirst({
-      where: { placementId: placement.id, role, workerUserId: worker.userId },
-    });
-    if (!job) {
-      throw new ApiError(409, "DEMO_ACTION_UNAVAILABLE", `No ${role.toLowerCase()} job is held by the demo worker.`);
-    }
-
-    assertJobTransition(job.status, JobStatus.PROOF_SUBMITTED);
-
-    await transaction.evidence.create({
-      data: {
-        placementId: placement.id,
-        jobId: job.id,
-        role,
-        workerUserId: worker.userId,
-        scannedShortCode: placement.asset.shortCode,
-        latitude: placement.location.latitude + offset + jitter(),
-        longitude: placement.location.longitude + jitter(),
-        accuracyMeters: 8,
-        capturedAt: new Date(now - 20_000),
-        challengeSymbol: symbol,
-        challengeResponse: symbol,
-        challengeIssuedAt: new Date(now - 90_000),
-        challengeExpiresAt: new Date(now + 90_000),
-        mediaHash: `0x${randomBytes(32).toString("hex")}`,
-      },
-    });
-
-    await transaction.job.update({
-      where: { id: job.id },
-      data: { status: JobStatus.PROOF_SUBMITTED, submittedAt: new Date() },
-    });
-
-    if (!options.movePlacement) return;
-
-    if (role === JobRole.INSTALLER) {
-      assertPlacementTransition(placement.status, PlacementStatus.INSTALL_SUBMITTED);
-      assertPlacementTransition(PlacementStatus.INSTALL_SUBMITTED, PlacementStatus.AWAITING_VERIFIER);
-      await transaction.placement.update({
-        where: { id: placement.id },
-        data: { status: PlacementStatus.AWAITING_VERIFIER, installedAt: new Date() },
-      });
-      await transaction.job.createMany({
-        data: [
-          {
-            placementId: placement.id,
-            campaignId: placement.campaignId,
-            role: JobRole.VERIFIER,
-            rewardMinor: BigInt(perPlacementMinor.verification),
-            currency: placement.campaign.currency,
-          },
-        ],
-        skipDuplicates: true,
-      });
-    } else {
-      assertPlacementTransition(placement.status, PlacementStatus.READY_FOR_FINAL_VERIFICATION);
-      await transaction.placement.update({
-        where: { id: placement.id },
-        data: { status: PlacementStatus.READY_FOR_FINAL_VERIFICATION },
-      });
-    }
+  await recordProof(placement.id, role, worker.userId, {
+    scannedShortCode: placement.asset.shortCode,
+    latitude: placement.location.latitude + offset + jitter(),
+    longitude: placement.location.longitude + jitter(),
+    accuracyMeters: 8,
+    capturedAt: new Date(now - 20_000),
+    challengeSymbol: symbol,
+    challengeResponse: symbol,
+    challengeIssuedAt: new Date(now - 90_000),
+    challengeExpiresAt: new Date(now + 90_000),
+    mediaHash: `0x${randomBytes(32).toString("hex")}`,
   });
 }
 
@@ -166,7 +111,6 @@ async function advancePlacement(
       jobs: true,
       location: true,
       asset: { select: { shortCode: true } },
-      campaign: { select: { currency: true } },
     },
   });
   if (!placement) throw new ApiError(404, "PLACEMENT_NOT_FOUND", "Placement not found.");
@@ -185,7 +129,7 @@ async function advancePlacement(
     }
 
     case PlacementStatus.INSTALLING:
-      await submitProof(placement, JobRole.INSTALLER, installer, { fraudulent, movePlacement: true });
+      await submitProof(placement, JobRole.INSTALLER, installer, fraudulent);
       return fraudulent
         ? "Installer proof submitted from about 2 km away. An independent verifier job is open."
         : "Installer proof submitted. An independent verifier job is open.";
@@ -200,7 +144,7 @@ async function advancePlacement(
     }
 
     case PlacementStatus.VERIFYING:
-      await submitProof(placement, JobRole.VERIFIER, verifier, { fraudulent, movePlacement: true });
+      await submitProof(placement, JobRole.VERIFIER, verifier, fraudulent);
       await assignPlacementWorkers(placement.id);
       return "Verifier proof submitted and both payout wallets recorded in escrow.";
 
@@ -218,14 +162,8 @@ async function advancePlacement(
       }
       for (const job of rejected) {
         const worker = job.role === JobRole.INSTALLER ? installer : verifier;
-        await startJob(worker, job.id);
-        await submitProof(placement, job.role, worker, { fraudulent: false, movePlacement: false });
+        await submitProof(placement, job.role, worker, false);
       }
-      assertPlacementTransition(placement.status, PlacementStatus.READY_FOR_FINAL_VERIFICATION);
-      await prisma.placement.update({
-        where: { id: placement.id },
-        data: { status: PlacementStatus.READY_FOR_FINAL_VERIFICATION },
-      });
       return "Fresh proof recaptured at the approved surface. Run confidential verification again.";
     }
 

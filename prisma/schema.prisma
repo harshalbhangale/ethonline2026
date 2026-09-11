@@ -490,7 +490,7 @@ model Job {
 model WorkerProfile {
   id                String            @id @default(cuid())
   userId            String            @unique @map("user_id")
-  displayName       String            @map("display_name") @db.VarChar(80)
+  displayName       String?           @map("display_name") @db.VarChar(80)
   selfieCheckStatus SelfieCheckStatus @default(NOT_STARTED) @map("selfie_check_status")
   riskStatus        WorkerRiskStatus  @default(CLEAR) @map("risk_status")
   completedJobs     Int               @default(0) @map("completed_jobs")

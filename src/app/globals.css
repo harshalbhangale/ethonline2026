@@ -109,3 +109,12 @@ input::placeholder {
     transition-duration: 0.01ms !important;
   }
 }
+
+/* Aliases used by the Worker app, mapped onto the shared theme tokens. */
+:root {
+  --amber: var(--badge);
+  --amber-soft: color-mix(in srgb, var(--badge) 14%, transparent);
+  --amber-line: color-mix(in srgb, var(--badge) 40%, transparent);
+  --good: var(--paid);
+  --bad: var(--fail);
+}

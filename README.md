@@ -25,10 +25,35 @@ The Brand Portal runs end to end on Sepolia:
 How it fits together, contract addresses, how Privy enables the product and what
 the CRE workflow keeps confidential: **[docs/onchain-brand-flow.md](docs/onchain-brand-flow.md)**.
 
-The Worker PWA is not built yet. Until it is, development-only **demo controls**
-(`NEXT_PUBLIC_DEMO_MODE=true`) step each placement through installation,
-independent verification and confidential verification with two prepared demo
-workers, using the same job rules, escrow calls and CRE workflow.
+### Worker PWA (`/worker`)
+
+An installable mobile app (manifest, service worker, bottom tabs) for the
+people who put posters up and check them:
+
+- **Jobs**: open placements with only an approximate area until accepted, and
+  independent checks. A worker never sees, and cannot take, the check of a
+  poster they installed.
+- **Proof**: the phone uploads its photo straight to the private Supabase
+  `proofs` bucket through a signed URL, with its GPS fix. The server stores the
+  photo's sha256 as the evidence fingerprint.
+- **Check**: the checker confirms with their own photo and location, or reports
+  the poster missing, which sends the installer back to recapture.
+- **Settlement**: a confirmed check records both Privy payout wallets in escrow
+  and starts the Chainlink CRE confidential verification; the escrow then pays
+  both workers. **Wallet** shows earnings and the onchain payout.
+
+It runs on the same placements, jobs and evidence as the Brand Portal
+(`src/lib/jobs/worker-view.ts`). Development-only **demo controls**
+(`NEXT_PUBLIC_DEMO_MODE=true`) on the brand campaign page step placements with
+two prepared demo workers through the same code path.
+
+The live on-camera challenge is not in the app yet: the photo is the challenge
+response for now.
+
+> Migration `20260911130000_retire_worker_dash_tables` drops the tables of an
+> earlier parallel worker prototype (`placement_jobs`, `placement_proofs`,
+> `ledger_entries`). Apply it with `npm run db:deploy` once their rows are
+> confirmed to be test data.
 
 ## Requirements
 
@@ -149,6 +174,7 @@ npm run db:studio
 npm run contracts:test   # Foundry tests for CampaignEscrow
 npm run cre:test         # Bun tests for the confidential checks
 npm run e2e:sepolia      # full treasury → escrow → CRE → payout run on Sepolia
+npm run e2e:worker       # Worker PWA flow: photo proof, independent check, payout
 ```
 
 Development runs on Turbopack: it starts in roughly half the time and compiles
