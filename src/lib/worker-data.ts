@@ -5,9 +5,9 @@ export type Job = WorkerTaskDto;
 export const statusLabel: Record<WorkerTaskStatusValue, string> = {
   OPEN: "Open",
   ACCEPTED: "In progress",
-  AWAITING_CHECK: "Waiting to be checked",
+  AWAITING_CHECK: "Picked for a spot check",
   CHECK_ACCEPTED: "Check in progress",
-  IN_REVIEW: "Confidential check running",
+  IN_REVIEW: "Being verified by Chainlink",
   NEEDS_RECAPTURE: "Needs a new photo",
   VERIFIED: "Verified and paid",
   REJECTED: "Rejected",

@@ -11,6 +11,7 @@ import {
   type FormEvent,
 } from "react";
 import AuthPrompt from "@/components/AuthPrompt";
+import CampaignResults from "@/components/campaigns/CampaignResults";
 import CampaignStatusBadge from "@/components/campaigns/CampaignStatusBadge";
 import EscrowPanel from "@/components/campaigns/EscrowPanel";
 import PlacementBoard from "@/components/placements/PlacementBoard";
@@ -222,6 +223,7 @@ export default function CampaignDetails({ campaignId }: { campaignId: string }) 
     error: null,
   });
   const [editingScope, setEditingScope] = useState<string | null>(null);
+  const [ending, setEnding] = useState(false);
 
   const cancelRequest = useCallback(() => {
     ++requestSequence.current;
@@ -319,6 +321,23 @@ export default function CampaignDetails({ campaignId }: { campaignId: string }) 
   const { campaign, loading, error } = currentState;
   const editing = Boolean(requestScope && editingScope === requestScope);
 
+  async function endCampaign(id: string) {
+    if (!window.confirm("End this campaign? Posters stay up and scans keep counting, but no new work is sent.")) return;
+    setEnding(true);
+    try {
+      const response = await authenticatedFetch<CampaignResponse>(
+        getAccessToken,
+        `/api/campaigns/${id}/complete`,
+        { method: "POST" },
+      );
+      setLoadState((previous) => ({ ...previous, campaign: response.campaign }));
+    } catch (caught) {
+      window.alert(caught instanceof Error ? caught.message : "Could not end the campaign.");
+    } finally {
+      setEnding(false);
+    }
+  }
+
   if (!ready || loading) {
     return <div className="h-96 animate-pulse rounded-[20px] bg-raised" />;
   }
@@ -371,6 +390,15 @@ export default function CampaignDetails({ campaignId }: { campaignId: string }) 
                 </Link>
               </>
             ) : null}
+            {["LIVE", "VERIFYING", "DEPLOYING"].includes(campaign.status) ? (
+              <button
+                onClick={() => void endCampaign(campaign.id)}
+                disabled={ending}
+                className="h-10 rounded-xl border border-line px-4 text-[13px] font-semibold hover:bg-raised disabled:opacity-50"
+              >
+                {ending ? "Ending…" : "End campaign"}
+              </button>
+            ) : null}
             {campaign.status === "QUOTED" ? (
               <Link
                 href={`/brand/new?campaign=${campaign.id}&step=review`}
@@ -421,11 +449,15 @@ export default function CampaignDetails({ campaignId }: { campaignId: string }) 
         </div>
       </Card>
 
-      <EscrowPanel campaignId={campaign.id} funded={campaign.fundedAt !== null} />
-
       {campaign.fundedAt !== null ? (
+        <CampaignResults campaignId={campaign.id} complete={campaign.status === "COMPLETE"} />
+      ) : null}
+
+      {campaign.fundedAt !== null && campaign.status !== "COMPLETE" ? (
         <LivePlacementMap campaignId={campaign.id} />
       ) : null}
+
+      <EscrowPanel campaignId={campaign.id} funded={campaign.fundedAt !== null} />
 
       <PlacementBoard campaignId={campaign.id} funded={campaign.fundedAt !== null} />
 

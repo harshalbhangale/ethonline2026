@@ -4,13 +4,9 @@ import { listServiceableCities } from "@/lib/locations/service";
 
 export const runtime = "nodejs";
 
-/**
- * Cities the wizard is allowed to suggest.
- *
- * Inventory changes rarely, so this is cached briefly rather than recomputed
- * for every brand opening the location step.
- */
-export const revalidate = 300;
+export const dynamic = "force-dynamic";
+
+/** Cities the wizard is allowed to suggest. Cached in the service. */
 
 export async function GET(request: Request) {
   try {

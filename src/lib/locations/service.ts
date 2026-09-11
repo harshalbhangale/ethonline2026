@@ -588,7 +588,18 @@ function snapRadius(metres: number) {
  * Grouping happens in memory because the approved set is small; if inventory
  * grows into the thousands this wants to become an aggregate query.
  */
+let citiesCache: { at: number; cities: ServiceableCity[] } | null = null;
+const CITIES_CACHE_MS = 5 * 60_000;
+
+/** Inventory changes rarely, so the grouping is reused for a few minutes. */
 export async function listServiceableCities(): Promise<ServiceableCity[]> {
+  if (citiesCache && Date.now() - citiesCache.at < CITIES_CACHE_MS) return citiesCache.cities;
+  const cities = await computeServiceableCities();
+  citiesCache = { at: Date.now(), cities };
+  return cities;
+}
+
+async function computeServiceableCities(): Promise<ServiceableCity[]> {
   const locations = await getPrismaClient().location.findMany({
     where: { permissionStatus: LocationPermissionStatus.APPROVED },
     select: {

@@ -4,13 +4,13 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import type { ReactNode } from "react";
 import { usePrivy } from "@privy-io/react-auth";
-import { WorkerProvider } from "@/components/worker/WorkerStore";
+import { useWorker, WorkerProvider } from "@/components/worker/WorkerStore";
 import WorkerSignIn from "@/components/worker/WorkerSignIn";
 
 const tabs = [
-  { href: "/worker", label: "Jobs" },
-  { href: "/worker/tasks", label: "My tasks" },
-  { href: "/worker/wallet", label: "Wallet" },
+  { href: "/worker", label: "Find work" },
+  { href: "/worker/tasks", label: "My work" },
+  { href: "/worker/wallet", label: "Earnings" },
 ];
 
 function JobsIcon() {
@@ -47,6 +47,44 @@ const icons: Record<string, () => ReactNode> = {
   "/worker/wallet": WalletIcon,
 };
 
+/** Statuses where the worker owes the next move. */
+const needsMe = new Set(["ACCEPTED", "CHECK_ACCEPTED", "NEEDS_RECAPTURE"]);
+
+/**
+ * The job underway, pinned above the tabs wherever the worker is, the way a
+ * delivery app keeps the current trip in view.
+ */
+function ActiveJobBar() {
+  const pathname = usePathname();
+  const { myTasks } = useWorker();
+  const active = myTasks.find((job) => needsMe.has(job.status));
+  if (!active || pathname === `/worker/${active.id}`) return null;
+
+  const action =
+    active.status === "NEEDS_RECAPTURE"
+      ? "Retake the photo"
+      : active.isInstaller
+        ? "Head there, stick & verify"
+        : "Check the poster";
+
+  return (
+    <Link
+      href={`/worker/${active.id}`}
+      className="fixed inset-x-0 bottom-[84px] z-10 mx-auto flex w-[calc(100%-2rem)] max-w-[488px] items-center justify-between gap-3 rounded-2xl bg-[var(--solid)] px-4 py-3 text-[var(--solid-ink)] shadow-lg active:opacity-90"
+    >
+      <span className="min-w-0">
+        <span className="block text-[11px] font-semibold uppercase tracking-[0.08em] opacity-70">
+          {action}
+        </span>
+        <span className="block truncate text-[14px] font-semibold">
+          {active.venueName}
+        </span>
+      </span>
+      <span className="shrink-0 text-[13px] font-semibold">Open →</span>
+    </Link>
+  );
+}
+
 export default function WorkerLayout({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const { ready, authenticated, user, logout } = usePrivy();
@@ -72,16 +110,23 @@ export default function WorkerLayout({ children }: { children: ReactNode }) {
           <span className="text-[17px] font-extrabold tracking-[-0.02em]">
             StickerBomb
           </span>
-          <button
-            onClick={logout}
-            className="flex items-center gap-2 rounded-full border border-[var(--line)] px-3 py-1.5 text-[12px] text-[var(--muted)]"
-          >
-            <span className="h-1.5 w-1.5 rounded-full bg-[var(--good)]" />
-            {me.startsWith("0x") ? `${me.slice(0, 6)}…${me.slice(-4)}` : "Signed in"}
-          </button>
+          <div className="flex items-center gap-2">
+            <span className="flex items-center gap-2 rounded-full border border-[var(--line)] px-3 py-1.5 text-[12px] text-[var(--muted)]">
+              <span className="h-1.5 w-1.5 rounded-full bg-[var(--good)]" />
+              {me.startsWith("0x") ? `${me.slice(0, 6)}…${me.slice(-4)}` : "Signed in"}
+            </span>
+            <button
+              onClick={logout}
+              className="px-1 text-[12px] font-medium text-[var(--faint)] hover:text-[var(--ink)]"
+            >
+              Sign out
+            </button>
+          </div>
         </header>
 
-        <main className="flex-1 px-5 pb-28 pt-5">{children}</main>
+        <main className="flex-1 px-5 pb-44 pt-5">{children}</main>
+
+        <ActiveJobBar />
 
         <nav className="fixed inset-x-0 bottom-0 z-10 mx-auto flex w-full max-w-[520px] justify-around border-t border-[var(--line)] bg-[var(--bg)]/95 px-2 pb-6 pt-2 backdrop-blur">
           {tabs.map((tab) => {

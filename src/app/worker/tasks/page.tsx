@@ -4,14 +4,27 @@ import Link from "next/link";
 import { useWorker } from "@/components/worker/WorkerStore";
 import { formatMoney, statusLabel } from "@/lib/worker-data";
 
+/** Needs me, then waiting on someone else, then finished. */
+const priority: Record<string, number> = {
+  NEEDS_RECAPTURE: 0,
+  ACCEPTED: 1,
+  CHECK_ACCEPTED: 1,
+  AWAITING_CHECK: 2,
+  IN_REVIEW: 3,
+  VERIFIED: 4,
+  REJECTED: 5,
+  EXPIRED: 6,
+};
+
 export default function MyTasks() {
-  const { myTasks, ready } = useWorker();
+  const { myTasks: unsorted, ready } = useWorker();
+  const myTasks = [...unsorted].sort((a, b) => (priority[a.status] ?? 9) - (priority[b.status] ?? 9));
 
   return (
     <>
-      <h1 className="text-[26px] font-extrabold tracking-[-0.02em]">My tasks</h1>
+      <h1 className="text-[26px] font-extrabold tracking-[-0.02em]">My work</h1>
       <p className="mt-1.5 text-[14px] text-[var(--muted)]">
-        Everything you have accepted.
+        What needs you first, then what is being checked, then what is paid.
       </p>
 
       <div className="mt-5 flex flex-col gap-3">
@@ -32,7 +45,11 @@ export default function MyTasks() {
         ) : (
           myTasks.map((job) => {
             const asInstaller = job.isInstaller;
-            const fee = asInstaller ? job.installerFeeMinor : job.verifierFeeMinor;
+            const fee = asInstaller
+              ? job.verificationMode === "SELF"
+                ? String(BigInt(job.installerFeeMinor) + BigInt(job.verifierFeeMinor))
+                : job.installerFeeMinor
+              : job.verifierFeeMinor;
             const tone =
               job.status === "VERIFIED"
                 ? "text-[var(--good)]"
@@ -52,7 +69,7 @@ export default function MyTasks() {
                       {job.placementInstructions ?? job.venueName}
                     </h3>
                     <p className="mt-1 text-[13px] text-[var(--muted)]">
-                      {asInstaller ? "You placed this" : "You are checking this"}
+                      {asInstaller ? "You stick & verify this" : "You are spot checking this"}
                     </p>
                   </div>
                   <span className="shrink-0 text-[16px] font-bold">
