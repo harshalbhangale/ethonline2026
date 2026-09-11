@@ -12,7 +12,7 @@
  */
 import { PlacementStatus, VerificationRunStatus } from "@/generated/prisma/client";
 import { getPrismaClient } from "@/lib/database/prisma";
-import { assignPlacementWorkers } from "@/lib/onchain/placements";
+import { assignPlacementWorkers, syncPlacementFromChain } from "@/lib/onchain/placements";
 import { isCreRunnerAvailable, startVerificationRun } from "@/lib/verification/runner";
 
 const POLL_MS = Number(process.env.WATCHER_POLL_MS ?? 15_000);
@@ -74,6 +74,21 @@ async function tick(url: string) {
     }
 
     try {
+      // A report can land onchain and still leave the placement reading
+      // READY_FOR_FINAL_VERIFICATION if the DB sync raced an unmined
+      // transaction — seen in practice. A plain chain read is nearly free
+      // next to a CRE run, so always try this first: it can turn a retry
+      // into a no-op instead of a second, wasted onchain report.
+      await syncPlacementFromChain(placement.id);
+      const after = await prisma.placement.findUnique({
+        where: { id: placement.id },
+        select: { status: true },
+      });
+      if (after?.status !== PlacementStatus.READY_FOR_FINAL_VERIFICATION) {
+        console.log(new Date().toISOString(), "already settled onchain, caught up", placement.id);
+        continue;
+      }
+
       // Idempotent: only sends a transaction when the escrow's payout wallets
       // don't already match. Verification must never run before this, or an
       // approved verdict can be reported onchain against no assigned payout
