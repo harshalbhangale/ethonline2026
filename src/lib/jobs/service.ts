@@ -208,11 +208,20 @@ export async function listWorkerJobs(
 }
 
 /**
+ * A worker can hold this many jobs at once before Find work is blocked.
+ *
+ * Not unlimited: each accept reveals a placement's exact location, so an
+ * unbounded queue would let one account sit on every open job in a city.
+ * Five is enough to batch a morning's route without emptying the board.
+ */
+const MAX_ACTIVE_JOBS = 5;
+
+/**
  * Claims an open job for the caller.
  *
- * Enforces, on the server: one active job per worker (one revealed location at
- * a time), no verifying your own installation, and first-come acceptance when
- * two workers race for the same job.
+ * Enforces, on the server: at most MAX_ACTIVE_JOBS active jobs per worker, no
+ * verifying your own installation, and first-come acceptance when two
+ * workers race for the same job.
  */
 export async function acceptJob(
   context: WorkerContext,
@@ -257,11 +266,11 @@ export async function acceptJob(
       where: { workerUserId: context.userId, status: { in: activeJobStatuses } },
     });
 
-    if (active > 0) {
+    if (active >= MAX_ACTIVE_JOBS) {
       throw new ApiError(
         409,
-        "ACTIVE_JOB_EXISTS",
-        "Finish your current job before accepting another.",
+        "ACTIVE_JOB_LIMIT",
+        `You can hold up to ${MAX_ACTIVE_JOBS} jobs at once. Finish one before accepting another.`,
       );
     }
 
