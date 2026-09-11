@@ -200,14 +200,44 @@ export default function LivePlacementMap({
   const anyActive = Boolean(data?.anyActive);
 
   // Follow workers closely while any job is underway.
+  // Polling pauses while the tab is hidden: a brand leaving this open in a
+  // background tab should not keep asking the server for a map nobody sees.
   useEffect(() => {
     if (!requestScope) return;
 
-    const timer = setInterval(
-      () => void load(true),
-      anyActive ? ACTIVE_POLL_MS : IDLE_POLL_MS,
-    );
-    return () => clearInterval(timer);
+    let timer: ReturnType<typeof setInterval> | null = null;
+
+    const start = () => {
+      if (timer) return;
+      timer = setInterval(
+        () => void load(true),
+        anyActive ? ACTIVE_POLL_MS : IDLE_POLL_MS,
+      );
+    };
+
+    const stop = () => {
+      if (!timer) return;
+      clearInterval(timer);
+      timer = null;
+    };
+
+    const onVisibilityChange = () => {
+      if (document.visibilityState === "hidden") {
+        stop();
+        return;
+      }
+
+      void load(true);
+      start();
+    };
+
+    if (document.visibilityState === "visible") start();
+    document.addEventListener("visibilitychange", onVisibilityChange);
+
+    return () => {
+      stop();
+      document.removeEventListener("visibilitychange", onVisibilityChange);
+    };
   }, [anyActive, requestScope, load]);
 
   // Memoised so the geometry below is not rebuilt on every render.

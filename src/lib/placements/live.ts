@@ -1,4 +1,4 @@
-import { JobRole, JobStatus } from "@/generated/prisma/client";
+import { JobRole, JobStatus, Prisma } from "@/generated/prisma/client";
 import { LANDING_EVENT } from "@/lib/assets/conversions";
 import type { BrandContext } from "@/lib/auth/require-brand";
 import { distanceInMetres } from "@/lib/campaigns/geo";
@@ -50,6 +50,37 @@ export type LiveCampaignResponse = {
   /** The fence drawn around each venue, so the client never hardcodes it. */
   radiusMeters: number;
 };
+
+type LatestPing = {
+  jobId: string;
+  latitude: number;
+  longitude: number;
+  recordedAt: Date;
+};
+
+/**
+ * The most recent position for each of the given jobs, in one round trip.
+ *
+ * DISTINCT ON is the cheap way to say "latest row per job" in Postgres; the
+ * alternative is a query per placement, which this endpoint cannot afford
+ * because the brand's map polls it continuously.
+ */
+async function loadLatestPings(jobIds: string[], since: Date) {
+  const byJob = new Map<string, LatestPing>();
+  if (jobIds.length === 0) return byJob;
+
+  const rows = await getPrismaClient().$queryRaw<LatestPing[]>`
+    SELECT DISTINCT ON (job_id)
+      job_id AS "jobId", latitude, longitude, recorded_at AS "recordedAt"
+    FROM location_pings
+    WHERE job_id IN (${Prisma.join(jobIds)})
+      AND recorded_at >= ${since}
+    ORDER BY job_id, recorded_at DESC
+  `;
+
+  for (const row of rows) byJob.set(row.jobId, row);
+  return byJob;
+}
 
 const emptyStats: PlacementStats = {
   scans: 0,
@@ -136,17 +167,19 @@ export async function getLiveCampaign(
   ]);
 
   const since = new Date(Date.now() - LIVE_WINDOW_MS);
-  const result = await Promise.all(
-    placements.map(async (placement): Promise<LivePlacementDto> => {
-      const activeJob = placement.jobs[0];
-      const ping = activeJob
-        ? await prisma.locationPing.findFirst({
-            where: { jobId: activeJob.id, recordedAt: { gte: since } },
-            orderBy: { recordedAt: "desc" },
-          })
-        : null;
+  const activeJobIds = placements
+    .map((placement) => placement.jobs[0]?.id)
+    .filter((id): id is string => Boolean(id));
 
-      return {
+  // One query for every worker's latest position, rather than one per
+  // placement: this is served to a poll that runs every few seconds.
+  const latestPings = await loadLatestPings(activeJobIds, since);
+
+  const result = placements.map((placement): LivePlacementDto => {
+    const activeJob = placement.jobs[0];
+    const ping = activeJob ? latestPings.get(activeJob.id) ?? null : null;
+
+    return {
         id: placement.id,
         status: placement.status,
         venueName: placement.location.venueName,
@@ -163,9 +196,8 @@ export async function getLiveCampaign(
                 updatedAt: ping.recordedAt.toISOString(),
               }
             : null,
-      };
-    }),
-  );
+    };
+  });
 
   return {
     placements: result,

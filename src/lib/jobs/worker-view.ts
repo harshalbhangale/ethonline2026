@@ -1,3 +1,4 @@
+import { after } from "next/server";
 import {
   CampaignStatus,
   JobRole,
@@ -24,10 +25,11 @@ import type {
 import { assignPlacementWorkers } from "@/lib/onchain/placements";
 import { createProofViewUrl, hashProofObject } from "@/lib/storage/proofs";
 import { GEOFENCE_RADIUS_METERS } from "@/lib/verification/evidence-api";
+import { minDwellSeconds, precheckRadiusMetres } from "@/lib/verification/leniency";
 import { isCreRunnerAvailable, startVerificationRun } from "@/lib/verification/runner";
 
 /** Time a self-verifying worker must be seen on site before the photo. */
-const MIN_DWELL_SECONDS = Number(process.env.STICKERBOMB_MIN_DWELL_SECONDS ?? 30);
+const MIN_DWELL_SECONDS = minDwellSeconds();
 /** Pings closer together than this are not stored. */
 const PING_INTERVAL_MS = 3_000;
 
@@ -50,7 +52,7 @@ function insideFence(distanceMetres: number, accuracyMeters: number | null | und
  */
 
 /** Immediate feedback only; the confidential check enforces the real fence. */
-const PRECHECK_RADIUS_METRES = 250;
+const PRECHECK_RADIUS_METRES = precheckRadiusMetres();
 
 const workableCampaignStatuses: CampaignStatus[] = [
   CampaignStatus.ASSETS_READY,
@@ -489,7 +491,10 @@ export async function submitInstallProof(
   appUrl: string,
 ) {
   await submitPhotoProof(context, placementId, JobRole.INSTALLER, proof);
-  await startSettlement(placementId, appUrl);
+  // Settlement creates wallets and waits on chain receipts, which is far too
+  // slow to hold a worker's phone on. It runs after the response instead; the
+  // placement's status is what the app watches for the outcome.
+  after(() => startSettlement(placementId, appUrl));
   return getTask(context, placementId);
 }
 
@@ -523,7 +528,7 @@ export async function confirmPlacement(
   appUrl: string,
 ) {
   await submitPhotoProof(context, placementId, JobRole.VERIFIER, proof);
-  await startSettlement(placementId, appUrl);
+  after(() => startSettlement(placementId, appUrl));
   return getTask(context, placementId);
 }
 

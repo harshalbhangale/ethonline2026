@@ -1,5 +1,11 @@
-import { AssetType, CampaignStatus, Prisma } from "@/generated/prisma/client";
+import {
+  AssetType,
+  CampaignStatus,
+  LocationPermissionStatus,
+  Prisma,
+} from "@/generated/prisma/client";
 import type { BrandContext } from "@/lib/auth/require-brand";
+import { distanceInMetres, radiusChoices } from "@/lib/campaigns/geo";
 import { buildAreaLabel } from "@/lib/campaigns/service";
 import { getPrismaClient } from "@/lib/database/prisma";
 import { ApiError } from "@/lib/http/api-error";
@@ -553,4 +559,79 @@ export async function saveCampaignPlacementPlan(
   });
 
   return { selectedLocationIds: chosen };
+}
+
+export type ServiceableCity = {
+  city: string;
+  countryCode: string;
+  countryName: string;
+  /** Centre of the city's approved surfaces, not the city's geographic centre. */
+  latitude: number;
+  longitude: number;
+  locationCount: number;
+  /** A radius that actually reaches this city's approved surfaces. */
+  suggestedRadiusMetres: number;
+};
+
+function snapRadius(metres: number) {
+  return radiusChoices.find((choice) => choice >= metres) ?? radiusChoices.at(-1)!;
+}
+
+/**
+ * Cities the platform can actually service, centred on their real inventory.
+ *
+ * The brand should never be offered a city with nothing in it, and a city's
+ * suggested centre has to be where its approved surfaces are: pointing at the
+ * geographic centre of Bengaluru puts every surface in HSR Layout kilometres
+ * outside the default radius.
+ *
+ * Grouping happens in memory because the approved set is small; if inventory
+ * grows into the thousands this wants to become an aggregate query.
+ */
+export async function listServiceableCities(): Promise<ServiceableCity[]> {
+  const locations = await getPrismaClient().location.findMany({
+    where: { permissionStatus: LocationPermissionStatus.APPROVED },
+    select: {
+      city: true,
+      countryCode: true,
+      countryName: true,
+      latitude: true,
+      longitude: true,
+    },
+  });
+
+  const byCity = new Map<string, typeof locations>();
+  for (const location of locations) {
+    const key = `${location.city}|${location.countryCode}`;
+    const group = byCity.get(key);
+    if (group) group.push(location);
+    else byCity.set(key, [location]);
+  }
+
+  const cities = [...byCity.values()].map((group): ServiceableCity => {
+    const latitude =
+      group.reduce((total, item) => total + item.latitude, 0) / group.length;
+    const longitude =
+      group.reduce((total, item) => total + item.longitude, 0) / group.length;
+
+    // Reach the furthest surface, with headroom so it is not sitting on the rim.
+    const furthest = Math.max(
+      ...group.map((item) => distanceInMetres({ latitude, longitude }, item)),
+    );
+
+    return {
+      city: group[0].city,
+      countryCode: group[0].countryCode,
+      countryName: group[0].countryName,
+      latitude,
+      longitude,
+      locationCount: group.length,
+      suggestedRadiusMetres: snapRadius(Math.max(1_000, furthest * 1.15)),
+    };
+  });
+
+  // Most inventory first: the cities a brand is most likely to want.
+  return cities.sort(
+    (a, b) => b.locationCount - a.locationCount || a.city.localeCompare(b.city),
+  );
 }

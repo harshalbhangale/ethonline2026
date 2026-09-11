@@ -53,6 +53,8 @@ type Config = {
   min_dwell_seconds?: number;
   /** Share of self-verified placements drawn for an independent check. */
   spot_check_percent?: number;
+  /** Relaxed checking for demonstrations. See CheckOptions.lenient. */
+  lenient?: boolean;
   secrets_ids: {
     evidence_api_key_id: string;
     geofence_salt_id: string;
@@ -201,6 +203,9 @@ export const onVerificationRequest = async (
     graceSeconds: challenge_grace_seconds,
     ...(runtime.config.min_dwell_seconds !== undefined
       ? { minDwellSeconds: runtime.config.min_dwell_seconds }
+      : {}),
+    ...(runtime.config.lenient !== undefined
+      ? { lenient: runtime.config.lenient }
       : {}),
   });
   const evidenceHash = commitEvidence(bundle, salt);

@@ -14,6 +14,7 @@ import { recordChainTransaction } from "@/lib/chain/ledger";
 import { getPrismaClient } from "@/lib/database/prisma";
 import { ApiError } from "@/lib/http/api-error";
 import { syncPlacementFromChain } from "@/lib/onchain/placements";
+import { geofenceRadiusMeters } from "@/lib/verification/leniency";
 
 /**
  * Endpoints used only by the Chainlink CRE confidential workflow.
@@ -23,8 +24,13 @@ import { syncPlacementFromChain } from "@/lib/onchain/placements";
  * inside the TEE, and are never called by browsers.
  */
 
-/** Proof counts when captured within this radius of the approved surface. */
-export const GEOFENCE_RADIUS_METERS = 75;
+/**
+ * Proof counts when captured within this radius of the approved surface.
+ *
+ * Re-read rather than frozen at import so the demo flag takes effect without a
+ * rebuild.
+ */
+export const GEOFENCE_RADIUS_METERS = geofenceRadiusMeters();
 
 export function assertCreRequest(request: Request) {
   const expected = process.env.STICKERBOMB_EVIDENCE_API_KEY?.trim();

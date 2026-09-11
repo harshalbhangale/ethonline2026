@@ -4,7 +4,24 @@ export type SelectedPlace = {
   countryName: string;
   latitude: number;
   longitude: number;
+  /**
+   * A radius known to reach this city's approved surfaces. Only present for
+   * cities we service; a freehand search from the map has no inventory to
+   * measure against.
+   */
+  suggestedRadiusMetres?: number;
 };
+
+/**
+ * Radii a campaign area can be set to.
+ *
+ * Shared so a server-side suggestion can only ever snap to a value the
+ * placement step actually offers. The large end exists because a city's
+ * approved surfaces can be spread right across a metro.
+ */
+export const radiusChoices = [
+  500, 1_000, 1_500, 3_000, 5_000, 10_000, 25_000,
+] as const;
 
 const EARTH_RADIUS_METRES = 6_371_000;
 

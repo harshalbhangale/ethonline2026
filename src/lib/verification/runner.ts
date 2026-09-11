@@ -7,6 +7,11 @@ import { getChainConfig, isOnchainConfigured } from "@/lib/chain/config";
 import { getPrismaClient } from "@/lib/database/prisma";
 import { ApiError } from "@/lib/http/api-error";
 import { syncPlacementFromChain } from "@/lib/onchain/placements";
+import {
+  isLenientVerification,
+  minDwellSeconds,
+  spotCheckPercent,
+} from "@/lib/verification/leniency";
 
 /**
  * Runs the Chainlink CRE confidential placement verifier through the CRE CLI
@@ -28,8 +33,20 @@ function creProjectRoot() {
   return path.join(process.cwd(), "cre");
 }
 
+/**
+ * Whether the CRE CLI is installed, memoised.
+ *
+ * This is read on every placement list response, including the brand's polls,
+ * and hitting the filesystem synchronously on that path is not worth it: the
+ * CLI does not appear or vanish while the server is running.
+ */
+let runnerAvailable: boolean | undefined;
+
 export function isCreRunnerAvailable() {
-  return isOnchainConfigured() && existsSync(creCliPath()) && existsSync(creProjectRoot());
+  if (!isOnchainConfigured()) return false;
+
+  runnerAvailable ??= existsSync(creCliPath()) && existsSync(creProjectRoot());
+  return runnerAvailable;
 }
 
 /**
@@ -46,8 +63,9 @@ function writeRunConfig(appUrl: string, runId: string, escrow: string) {
     JSON.stringify({
       evidence_api_url: `${appUrl.replace(/\/$/, "")}/api/cre/placements`,
       challenge_grace_seconds: 30,
-      min_dwell_seconds: Number(process.env.STICKERBOMB_MIN_DWELL_SECONDS ?? 30),
-      spot_check_percent: Number(process.env.STICKERBOMB_SPOT_CHECK_PERCENT ?? 10),
+      min_dwell_seconds: minDwellSeconds(),
+      spot_check_percent: spotCheckPercent(),
+      lenient: isLenientVerification(),
       secrets_ids: {
         evidence_api_key_id: "evidence_api_key",
         geofence_salt_id: "geofence_salt",

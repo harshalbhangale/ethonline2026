@@ -260,6 +260,11 @@ export default function CampaignWizard() {
             countryName: place.countryName,
             centerLatitude: place.latitude,
             centerLongitude: place.longitude,
+            // Carried forward so the area step opens on a radius that actually
+            // reaches this city's approved surfaces.
+            ...(place.suggestedRadiusMetres
+              ? { radiusMeters: place.suggestedRadiusMetres }
+              : {}),
             wizardStep: "PLACEMENTS",
           }),
         },

@@ -130,3 +130,73 @@ describe("spot check sampling", () => {
     expect(selected).toBeLessThan(250);
   });
 });
+
+/**
+ * Lenient mode exists so a live demonstration is not derailed by a phone that
+ * refused location or a challenge that timed out while someone was talking.
+ * These tests pin what it forgives and, more importantly, what it does not.
+ */
+describe("lenient verification", () => {
+  const lenient = { lenient: true };
+
+  test("approve a photo on site with no location trail at all", () => {
+    expect(evaluatePlacement(bundle({ trail: [] }), lenient)).toEqual({
+      approved: true,
+      reasons: [],
+    });
+  });
+
+  test("approve a photo taken the instant the worker arrived", () => {
+    const justArrived = [
+      { latitude: site.latitude, longitude: site.longitude, accuracyMeters: 8, recordedAt: new Date(now - 1_000).toISOString() },
+      { latitude: site.latitude, longitude: site.longitude, accuracyMeters: 8, recordedAt: new Date(now).toISOString() },
+    ];
+    expect(evaluatePlacement(bundle({ trail: justArrived }), lenient).approved).toBe(true);
+  });
+
+  test("approve a photo whose challenge had already expired", () => {
+    const stale = submission({
+      challengeExpiresAt: new Date(now - 10 * 60_000).toISOString(),
+      challengeResponse: "SOMETHING-ELSE",
+    });
+    expect(evaluatePlacement(bundle({ installation: stale }), lenient).approved).toBe(true);
+  });
+
+  test("still reject a photo taken across the city", () => {
+    const faraway = submission({ latitude: site.latitude + 0.02 });
+    expect(
+      evaluatePlacement(bundle({ installation: faraway, trail: [] }), lenient).reasons,
+    ).toContain("INSTALLER:OUTSIDE_GEOFENCE");
+  });
+
+  test("still reject the wrong poster", () => {
+    const wrongPoster = submission({ scannedShortCode: "ZZ99ZZ" });
+    expect(
+      evaluatePlacement(bundle({ installation: wrongPoster }), lenient).reasons,
+    ).toContain("INSTALLER:WRONG_QR");
+  });
+
+  test("still reject a reused photo", () => {
+    const reused = bundle({ priorMediaHashes: ["0x" + "a".repeat(64)] });
+    expect(evaluatePlacement(reused, lenient).reasons).toContain("INSTALLER:DUPLICATE_MEDIA");
+  });
+
+  test("still reject the installer checking their own work", () => {
+    const selfChecked = bundle({
+      mode: "INDEPENDENT",
+      verification: submission({ role: "VERIFIER", mediaHash: "0x" + "b".repeat(64) }),
+    });
+    expect(evaluatePlacement(selfChecked, lenient).reasons).toContain("SELF_VERIFICATION");
+  });
+
+  test("still reject a trail that teleports across the country", () => {
+    const teleport = [
+      { latitude: site.latitude, longitude: site.longitude, accuracyMeters: 8, recordedAt: new Date(now - 120_000).toISOString() },
+      { latitude: site.latitude + 5, longitude: site.longitude, accuracyMeters: 8, recordedAt: new Date(now - 60_000).toISOString() },
+      { latitude: site.latitude, longitude: site.longitude, accuracyMeters: 8, recordedAt: new Date(now).toISOString() },
+    ];
+    expect(evaluatePlacement(bundle({ trail: teleport }), lenient).reasons).toContain(
+      "INSTALLER:IMPOSSIBLE_TRAVEL",
+    );
+  });
+});

@@ -11,7 +11,7 @@ import {
   ClientApiError,
 } from "@/lib/api/authenticated-fetch";
 import { formatCampaignBudget } from "@/lib/campaigns/format";
-import { formatRadius } from "@/lib/campaigns/geo";
+import { formatRadius, radiusChoices } from "@/lib/campaigns/geo";
 import { isMapConfigured } from "@/lib/campaigns/mapbox";
 import {
   estimateDeploymentMinutes,
@@ -44,7 +44,8 @@ const CampaignRadius = dynamic(
   { ssr: false },
 );
 
-const radiusChoices = [500, 1_000, 1_500, 3_000, 5_000];
+// Shared with the server so a suggested radius is always a value offered here.
+
 const maxAreas = 6;
 
 type DraftArea = {

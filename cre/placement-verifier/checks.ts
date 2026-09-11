@@ -61,12 +61,23 @@ export type CheckOptions = {
   minDwellSeconds: number;
   /** Faster than this between two pings is treated as spoofed location. */
   maxSpeedKmh: number;
+  /**
+   * Relaxed checking for demonstrations.
+   *
+   * Drops the requirements a live demo cannot reliably satisfy: a continuous
+   * location trail, a minimum time on site, and the timed challenge. It never
+   * drops the checks that make a placement trustworthy at all, so a poster
+   * photographed from the wrong side of the city, a reused photo, or one person
+   * playing both roles still fails.
+   */
+  lenient: boolean;
 };
 
 export const defaultCheckOptions: CheckOptions = {
   graceSeconds: 30,
   minDwellSeconds: 30,
   maxSpeedKmh: 150,
+  lenient: false,
 };
 
 const EARTH_RADIUS_METRES = 6_371_000;
@@ -116,18 +127,21 @@ function checkSubmission(
     reasons.push("OUTSIDE_GEOFENCE");
   }
 
-  const captured = Date.parse(submission.capturedAt);
-  const issued = Date.parse(submission.challengeIssuedAt);
-  const expires = Date.parse(submission.challengeExpiresAt) + options.graceSeconds * 1000;
-  if (!(captured >= issued && captured <= expires)) {
-    reasons.push("CHALLENGE_EXPIRED");
-  }
+  // The timed challenge is the part a live demonstration cannot keep up with.
+  if (!options.lenient) {
+    const captured = Date.parse(submission.capturedAt);
+    const issued = Date.parse(submission.challengeIssuedAt);
+    const expires = Date.parse(submission.challengeExpiresAt) + options.graceSeconds * 1000;
+    if (!(captured >= issued && captured <= expires)) {
+      reasons.push("CHALLENGE_EXPIRED");
+    }
 
-  if (
-    submission.challengeResponse.trim().toUpperCase() !==
-    submission.challengeSymbol.trim().toUpperCase()
-  ) {
-    reasons.push("CHALLENGE_MISMATCH");
+    if (
+      submission.challengeResponse.trim().toUpperCase() !==
+      submission.challengeSymbol.trim().toUpperCase()
+    ) {
+      reasons.push("CHALLENGE_MISMATCH");
+    }
   }
 
   if (bundle.priorMediaHashes.includes(submission.mediaHash.toLowerCase())) {
@@ -151,7 +165,10 @@ function checkTrail(
     .filter((ping) => Date.parse(ping.recordedAt) <= captured + options.graceSeconds * 1000)
     .sort((a, b) => Date.parse(a.recordedAt) - Date.parse(b.recordedAt));
 
-  if (pings.length < 2) return ["NO_LOCATION_TRAIL"];
+  // A demo phone may never have granted location at all, so an absent trail is
+  // not treated as evidence of anything. The photo's own fix still has to be
+  // inside the fence, which is checked separately.
+  if (pings.length < 2) return options.lenient ? [] : ["NO_LOCATION_TRAIL"];
 
   const reasons: string[] = [];
 
@@ -165,6 +182,10 @@ function checkTrail(
       break;
     }
   }
+
+  // Impossible travel is kept even when lenient: it is the one trail check that
+  // catches spoofing rather than merely an imperfect demo.
+  if (options.lenient) return reasons;
 
   const firstInside = pings.find((ping) => insideFence(bundle, ping));
   if (!firstInside) {

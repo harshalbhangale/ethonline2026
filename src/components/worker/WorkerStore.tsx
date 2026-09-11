@@ -6,6 +6,7 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
 } from "react";
@@ -18,8 +19,8 @@ import type { MeResponse } from "@/lib/auth/types";
 import type { WorkerPingDto, WorkerWalletDto } from "@/lib/jobs/types";
 import type { Job } from "@/lib/worker-data";
 
-type JobsResponse = { jobs: Job[] };
 type JobResponse = { job: Job };
+type AllJobsResponse = { place: Job[]; check: Job[]; mine: Job[] };
 
 type Store = {
   ready: boolean;
@@ -84,8 +85,14 @@ export function WorkerProvider({ children }: { children: ReactNode }) {
   const [wallet, setWallet] = useState<WorkerWalletDto | null>(null);
   const [jobs, setJobs] = useState<Job[]>([]);
 
+  // The profile is created once per session, not re-checked on every refresh.
+  const profileChecked = useRef(false);
+
   const ensureWorkerProfile = useCallback(async () => {
+    if (profileChecked.current) return;
+
     const me = await authenticatedFetch<MeResponse>(getAccessToken, "/api/me");
+    profileChecked.current = true;
 
     if (me.worker) return;
 
@@ -100,15 +107,10 @@ export function WorkerProvider({ children }: { children: ReactNode }) {
 
     try {
       await ensureWorkerProfile();
-      const [place, check, mine, nextWallet] = await Promise.all([
-        authenticatedFetch<JobsResponse>(getAccessToken, "/api/worker/jobs"),
-        authenticatedFetch<JobsResponse>(
+      const [lists, nextWallet] = await Promise.all([
+        authenticatedFetch<AllJobsResponse>(
           getAccessToken,
-          "/api/worker/jobs?tab=check",
-        ),
-        authenticatedFetch<JobsResponse>(
-          getAccessToken,
-          "/api/worker/jobs?tab=mine",
+          "/api/worker/jobs?tab=all",
         ),
         authenticatedFetch<WorkerWalletDto>(
           getAccessToken,
@@ -116,11 +118,11 @@ export function WorkerProvider({ children }: { children: ReactNode }) {
         ),
       ]);
 
-      setPlaceJobs(place.jobs);
-      setCheckJobs(check.jobs);
-      setMyTasks(mine.jobs);
+      setPlaceJobs(lists.place);
+      setCheckJobs(lists.check);
+      setMyTasks(lists.mine);
       setWallet(nextWallet);
-      setJobs(mergeJobs(place.jobs, check.jobs, mine.jobs));
+      setJobs(mergeJobs(lists.place, lists.check, lists.mine));
     } catch (caught) {
       setError(errorMessage(caught));
     } finally {
@@ -162,7 +164,11 @@ export function WorkerProvider({ children }: { children: ReactNode }) {
         },
       );
 
-      await refresh();
+      // The response already carries the updated job, so the screen can settle
+      // immediately. The lists catch up in the background rather than making
+      // the worker wait for them.
+      setJobs((current) => mergeJobs(current, [response.job]));
+      void refresh();
       return response.job;
     },
     [getAccessToken, refresh],

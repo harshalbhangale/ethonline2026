@@ -1,13 +1,18 @@
 "use client";
 
+import { usePrivy } from "@privy-io/react-auth";
 import dynamic from "next/dynamic";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Card } from "@/components/ui";
-import { ClientApiError } from "@/lib/api/authenticated-fetch";
+import {
+  authenticatedFetch,
+  ClientApiError,
+} from "@/lib/api/authenticated-fetch";
 import type { SelectedPlace } from "@/lib/campaigns/geo";
 import { isMapConfigured } from "@/lib/campaigns/mapbox";
 import { knownPlaces } from "@/lib/campaigns/places";
 import type { CampaignDto } from "@/lib/campaigns/types";
+import type { ServiceableCity } from "@/lib/locations/service";
 
 // Mapbox GL touches window at import time and ships a large bundle, so it is
 // loaded only in the browser and only when this step is reached.
@@ -36,9 +41,6 @@ const LocationSearch = dynamic(
     ),
   },
 );
-
-/** Cities the brand can jump to without typing. */
-const suggestedCities = knownPlaces.slice(0, 6);
 
 export default function LocationStep({
   campaign,
@@ -70,6 +72,27 @@ export default function LocationStep({
 
   const [selected, setSelected] = useState<SelectedPlace | null>(initial);
   const [error, setError] = useState<string | null>(null);
+  const [cities, setCities] = useState<ServiceableCity[]>([]);
+
+  // Only cities with approved surfaces are offered. Suggesting a city we cannot
+  // service sends the brand to a placement step with nothing in it.
+  const { getAccessToken } = usePrivy();
+  useEffect(() => {
+    let cancelled = false;
+
+    void authenticatedFetch<{ cities: ServiceableCity[] }>(
+      getAccessToken,
+      "/api/locations/cities",
+    )
+      .then((response) => {
+        if (!cancelled) setCities(response.cities);
+      })
+      .catch(() => undefined);
+
+    return () => {
+      cancelled = true;
+    };
+  }, [getAccessToken]);
 
   // The brief may have named a city before any coordinates existed.
   const briefHint =
@@ -105,19 +128,11 @@ export default function LocationStep({
         </p>
 
         <div className="mt-6 flex flex-wrap gap-2">
-          {suggestedCities.map((place) => (
+          {cities.map((place) => (
             <button
-              key={place.city}
+              key={`${place.city}-${place.countryCode}`}
               type="button"
-              onClick={() =>
-                setSelected({
-                  city: place.city,
-                  countryCode: place.countryCode,
-                  countryName: place.countryName,
-                  latitude: place.latitude,
-                  longitude: place.longitude,
-                })
-              }
+              onClick={() => setSelected(place)}
               className={`rounded-full border px-3.5 py-1.5 text-[13px] font-semibold transition-colors ${
                 selected?.city === place.city
                   ? "border-badge text-badge"
@@ -143,13 +158,9 @@ export default function LocationStep({
     );
   }
 
-  function choose(place: {
-    city: string;
-    countryCode: string;
-    countryName: string;
-    latitude: number;
-    longitude: number;
-  }) {
+  // Typed as SelectedPlace so a serviceable city's suggested radius survives
+  // into state rather than being narrowed away.
+  function choose(place: SelectedPlace) {
     setSelected(place);
     setError(null);
   }
@@ -188,31 +199,33 @@ export default function LocationStep({
 
         <div className="mt-5 border-t border-line pt-4">
           <p className="text-[11px] font-bold uppercase tracking-[0.09em] text-faint">
-            Recent cities
+            Cities with approved surfaces
           </p>
           <div className="mt-2.5 flex flex-wrap gap-1.5">
-            {suggestedCities.map((place) => (
-              <button
-                key={place.city}
-                type="button"
-                onClick={() =>
-                  choose({
-                    city: place.city,
-                    countryCode: place.countryCode,
-                    countryName: place.countryName,
-                    latitude: place.latitude,
-                    longitude: place.longitude,
-                  })
-                }
-                className={`rounded-full border px-3 py-1.5 text-[12.5px] font-medium transition-colors ${
-                  selected?.city === place.city
-                    ? "border-badge text-badge"
-                    : "border-line text-muted hover:text-ink"
-                }`}
-              >
-                {place.city}
-              </button>
-            ))}
+            {cities.length === 0 ? (
+              <p className="text-[12.5px] leading-relaxed text-muted">
+                Loading available cities…
+              </p>
+            ) : (
+              cities.map((place) => (
+                <button
+                  key={`${place.city}-${place.countryCode}`}
+                  type="button"
+                  onClick={() => choose(place)}
+                  title={`${place.locationCount} approved surfaces`}
+                  className={`rounded-full border px-3 py-1.5 text-[12.5px] font-medium transition-colors ${
+                    selected?.city === place.city
+                      ? "border-badge text-badge"
+                      : "border-line text-muted hover:text-ink"
+                  }`}
+                >
+                  {place.city}
+                  <span className="ml-1.5 text-[11px] text-faint">
+                    {place.locationCount}
+                  </span>
+                </button>
+              ))
+            )}
           </div>
         </div>
 

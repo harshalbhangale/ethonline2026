@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { PrivyClient } from "@privy-io/node";
 import { ApiError } from "@/lib/http/api-error";
 
@@ -47,11 +48,60 @@ function readBearerToken(request: Request) {
   return token;
 }
 
+type VerifiedClaims = Awaited<
+  ReturnType<ReturnType<ReturnType<PrivyClient["utils"]>["auth"]>["verifyAccessToken"]>
+>;
+
+/**
+ * Recently verified tokens, keyed by digest rather than the token itself.
+ *
+ * One screen can fire half a dozen authenticated requests, and without this
+ * every one of them waits on its own round trip to Privy. The window is short
+ * so a signed-out session stops working promptly; the cost is that a token
+ * revoked mid-window keeps working until it lapses.
+ */
+const verified = new Map<string, { claims: VerifiedClaims; expiresAt: number }>();
+
+const VERIFY_CACHE_MS = 30_000;
+const VERIFY_CACHE_MAX = 500;
+
+function digest(token: string) {
+  return createHash("sha256").update(token).digest("hex");
+}
+
+function readCached(key: string) {
+  const hit = verified.get(key);
+  if (!hit) return null;
+
+  if (hit.expiresAt <= Date.now()) {
+    verified.delete(key);
+    return null;
+  }
+
+  return hit.claims;
+}
+
+function remember(key: string, claims: VerifiedClaims) {
+  // Bounded, and the oldest insertion is the first key Map iterates.
+  if (verified.size >= VERIFY_CACHE_MAX) {
+    const oldest = verified.keys().next();
+    if (!oldest.done) verified.delete(oldest.value);
+  }
+
+  verified.set(key, { claims, expiresAt: Date.now() + VERIFY_CACHE_MS });
+}
+
 export async function verifyPrivyRequest(request: Request) {
   const token = readBearerToken(request);
+  const key = digest(token);
+
+  const cached = readCached(key);
+  if (cached) return cached;
 
   try {
-    return await getPrivyClient().utils().auth().verifyAccessToken(token);
+    const claims = await getPrivyClient().utils().auth().verifyAccessToken(token);
+    remember(key, claims);
+    return claims;
   } catch (error) {
     if (error instanceof ApiError) {
       throw error;
