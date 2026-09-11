@@ -5,6 +5,8 @@ import {
   type Location,
 } from "@/generated/prisma/client";
 import { buildScanUrl } from "@/lib/assets/app-url";
+import { resolveDesign } from "@/lib/assets/design";
+import { decodeArtwork } from "@/lib/assets/halftone";
 import { renderPosterPng, verifyQrPayload } from "@/lib/assets/qr";
 import { generateShortCode } from "@/lib/assets/short-code";
 import { downloadArtwork } from "@/lib/storage/artwork";
@@ -117,10 +119,11 @@ export async function generateCampaignAssets(
     a.location.venueName.localeCompare(b.location.venueName),
   );
 
-  // Fetched once for the whole run: every poster in a campaign shares artwork.
-  const artwork = campaign.artworkUrl
-    ? await downloadArtwork(campaign.artworkUrl)
-    : null;
+  // Fetched and decoded once for the whole run: every poster shares artwork
+  // and design, only the code differs.
+  const rawArtwork = campaign.artworkUrl ? await downloadArtwork(campaign.artworkUrl) : null;
+  const artwork = rawArtwork ? await decodeArtwork(rawArtwork) : null;
+  const design = resolveDesign(campaign.posterDesign, campaign.assetType, artwork !== null);
 
   const created: AssetWithLocation[] = [];
 
@@ -136,6 +139,7 @@ export async function generateCampaignAssets(
       venueName: assignment.location.venueName,
       shortCode,
       artwork,
+      design,
     });
     const verification = await verifyQrPayload(poster, qrPayload);
 
@@ -191,7 +195,9 @@ export async function getOwnedAssetByShortCode(
     },
     include: {
       location: true,
-      campaign: { select: { name: true, artworkUrl: true } },
+      campaign: {
+        select: { name: true, artworkUrl: true, posterDesign: true, assetType: true },
+      },
     },
   });
 

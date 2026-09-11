@@ -4,6 +4,7 @@ import { usePrivy } from "@privy-io/react-auth";
 import Image from "next/image";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { MagneticDropZone } from "@/components/motion/MagneticDropZone";
+import PosterStudio from "@/components/poster/PosterStudio";
 import { Card } from "@/components/ui";
 import {
   authenticatedFetch,
@@ -303,6 +304,27 @@ export default function CreativeStep({
             {artworkError ? (
               <p className="mt-3 text-[12.5px] text-fail">{artworkError}</p>
             ) : null}
+          </div>
+
+          <div className="mt-6 border-t border-line pt-5">
+            <p className="text-[13.5px] font-semibold">Poster design</p>
+            <p className="mb-4 mt-1 text-[12.5px] leading-relaxed text-muted">
+              Tune how the code carries your artwork. The preview is drawn by
+              the same renderer that prints, and checked the way a phone sees
+              a poster on a wall.
+            </p>
+            <PosterStudio
+              assetType={campaign.assetType}
+              stored={campaign.posterDesign}
+              artworkUrl={artworkUrl}
+              onSave={async (posterDesign) => {
+                await authenticatedFetch(getAccessToken, `/api/campaigns/${campaign.id}`, {
+                  method: "PATCH",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ posterDesign }),
+                });
+              }}
+            />
           </div>
         </div>
 

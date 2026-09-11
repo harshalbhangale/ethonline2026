@@ -1,172 +1,103 @@
-import QRCode from "qrcode";
 import sharp from "sharp";
+import type { PosterDesign } from "@/lib/assets/design";
+import {
+  buildQr,
+  QUIET_ZONE,
+  renderPosterQr,
+  type Rgba,
+} from "@/lib/assets/halftone-core";
+import { checkScan } from "@/lib/assets/scan-check";
 
-const DARK = 0;
-const LIGHT = 255;
+/** Longest side artwork is decoded at, on both server and client. */
+export const ARTWORK_SAMPLE_SIDE = 1024;
 
-/**
- * Modules a decoder must read perfectly to find and orient the code at all.
- *
- * Finder patterns, their separators, the timing lines and the bottom-right
- * alignment pattern are rendered solid. Error correction can rescue damaged
- * data modules, but it cannot rescue a code the phone never locates.
- */
-function isStructuralModule(row: number, column: number, size: number) {
-  const inCorner = (top: number, left: number) =>
-    row >= top && row < top + 8 && column >= left && column < left + 8;
-
-  // The three finder patterns, each taken with its separator.
-  if (inCorner(0, 0)) return true;
-  if (inCorner(0, size - 8)) return true;
-  if (inCorner(size - 8, 0)) return true;
-
-  // Timing patterns.
-  if (row === 6 || column === 6) return true;
-
-  // The bottom-right alignment pattern, present from version 2 onwards.
-  const centre = size - 7;
-  if (
-    size >= 25 &&
-    row >= centre - 2 &&
-    row <= centre + 2 &&
-    column >= centre - 2 &&
-    column <= centre + 2
-  ) {
-    return true;
-  }
-
-  return false;
-}
-
-function createMatrix(payload: string, version: number) {
-  try {
-    return QRCode.create(payload, { errorCorrectionLevel: "H", version });
-  } catch {
-    return QRCode.create(payload, { errorCorrectionLevel: "H" });
-  }
-}
-
-/** Floyd–Steinberg, so continuous tone survives as texture rather than banding. */
-function dither(target: Float32Array, size: number) {
-  const output = Buffer.alloc(size * size);
-
-  for (let y = 0; y < size; y += 1) {
-    for (let x = 0; x < size; x += 1) {
-      const index = y * size + x;
-      const value = target[index];
-      const quantised = value < 128 ? DARK : LIGHT;
-      output[index] = quantised;
-
-      const error = value - quantised;
-      const lastColumn = x + 1 >= size;
-      const lastRow = y + 1 >= size;
-
-      if (!lastColumn) target[index + 1] += (error * 7) / 16;
-      if (!lastRow) {
-        if (x > 0) target[index + size - 1] += (error * 3) / 16;
-        target[index + size] += (error * 5) / 16;
-        if (!lastColumn) target[index + size + 1] += (error * 1) / 16;
-      }
-    }
-  }
-
-  return output;
-}
-
-/**
- * A QR code with the brand's artwork woven through it.
- *
- * Each module becomes a 3x3 block whose centre subpixel always carries the
- * module's true value, because that is the point a decoder samples. The eight
- * subpixels around it carry the dithered artwork, which is what makes the code
- * look like a picture instead of a barcode.
- *
- * `bias` trades likeness for legibility: 0 is pure artwork, 1 is a plain QR.
- * Callers raise it until the result decodes.
- */
-export async function renderHalftoneQrPng({
-  payload,
-  artwork,
-  bias,
-  version = 10,
-  blockSize = 5,
-  width = 900,
-  margin = 4,
-}: {
-  payload: string;
-  artwork: Buffer;
-  bias: number;
-  /**
-   * Forcing a higher version buys image fidelity: more modules means a finer
-   * grid to draw into. It also makes each printed module smaller, so this
-   * trades likeness against how far away a phone can still scan.
-   */
-  version?: number;
-  blockSize?: number;
-  width?: number;
-  margin?: number;
-}) {
-  // A forced version is a request, not a requirement: a payload too long for
-  // it must still produce a code rather than fail the whole poster.
-  const qr = createMatrix(payload, version);
-  const size = qr.modules.size;
-  const modules = qr.modules.data;
-  const inner = size * blockSize;
-
-  // Cover-fit so the artwork fills the code without distorting its aspect.
-  const greyscale = await sharp(artwork)
-    .resize(inner, inner, { fit: "cover", position: "centre" })
-    .greyscale()
-    .normalise()
+/** Decodes uploaded artwork to RGBA at the size the core samples from. */
+export async function decodeArtwork(artwork: Buffer): Promise<Rgba> {
+  const { data, info } = await sharp(artwork)
+    .rotate() // honour EXIF orientation, as the browser does
+    .resize(ARTWORK_SAMPLE_SIDE, ARTWORK_SAMPLE_SIDE, { fit: "inside", withoutEnlargement: true })
+    .ensureAlpha()
     .raw()
-    .toBuffer();
+    .toBuffer({ resolveWithObject: true });
+  return { width: info.width, height: info.height, data: new Uint8ClampedArray(data) };
+}
 
-  // Pull every subpixel part-way towards the value its module needs to be.
-  const target = new Float32Array(inner * inner);
-  for (let y = 0; y < inner; y += 1) {
-    const row = Math.floor(y / blockSize);
-    for (let x = 0; x < inner; x += 1) {
-      const column = Math.floor(x / blockSize);
-      const moduleLuminance =
-        modules[row * size + column] === 1 ? DARK : LIGHT;
-      const index = y * inner + x;
-      target[index] =
-        greyscale[index] * (1 - bias) + moduleLuminance * bias;
-    }
-  }
+/**
+ * Legibility steps tried after the brand's own choice. Each looks a little
+ * less like the artwork and reads a little more easily.
+ */
+const LADDER_STEP = 0.1;
+const LADDER_MAX = 0.9;
 
-  const pixels = dither(target, inner);
+export type DesignedQr = {
+  /** Native resolution: one pixel per subpixel, quiet zone included. */
+  native: Rgba;
+  /** The design actually used, after any automatic legibility increase. */
+  design: PosterDesign;
+  /** False when even the ladder failed and this is the plain fallback. */
+  styled: boolean;
+};
 
-  // Restore the parts a decoder cannot afford to have dithered.
-  const centre = Math.floor(blockSize / 2);
-  for (let row = 0; row < size; row += 1) {
-    for (let column = 0; column < size; column += 1) {
-      const luminance = modules[row * size + column] === 1 ? DARK : LIGHT;
-      const structural = isStructuralModule(row, column, size);
+/**
+ * The poster QR in the brand's design, proven printable.
+ *
+ * Starts at the brand's own legibility and only raises it if the render won't
+ * read both close up and from a distance. If nothing on the ladder reads, it
+ * falls back to the plain code in the same colour mode — an ugly poster that
+ * scans beats a beautiful one that doesn't.
+ */
+export function renderPrintableQr(
+  payload: string,
+  artwork: Rgba | null,
+  design: PosterDesign,
+): DesignedQr {
+  const qr = buildQr(payload);
+  const across = qr.size + QUIET_ZONE * 2;
 
-      for (let dy = 0; dy < blockSize; dy += 1) {
-        for (let dx = 0; dx < blockSize; dx += 1) {
-          if (!structural && (dx !== centre || dy !== centre)) continue;
-          pixels[(row * blockSize + dy) * inner + column * blockSize + dx] =
-            luminance;
-        }
+  if (design.style !== "PLAIN" && artwork) {
+    for (
+      let legibility = design.legibility;
+      legibility <= LADDER_MAX + 1e-9;
+      legibility += LADDER_STEP
+    ) {
+      const attempt = { ...design, legibility: Math.min(1, legibility) };
+      const native = renderPosterQr(qr, artwork, attempt);
+      if (checkScan(native, payload, across).printable) {
+        return { native, design: attempt, styled: true };
       }
     }
   }
 
-  const quietZone = margin * blockSize;
+  const plain: PosterDesign = {
+    ...design,
+    style: "PLAIN",
+    color: design.color === "BRAND" ? "BRAND" : "MONO",
+  };
+  const native = renderPosterQr(qr, null, plain);
+  if (!checkScan(native, payload, across).printable) {
+    throw new Error("Even the plain QR code failed to decode.");
+  }
+  return { native, design: plain, styled: false };
+}
 
-  return sharp(pixels, { raw: { width: inner, height: inner, channels: 1 } })
+/** PNG of a native render, scaled to fit `size` with whole-pixel steps. */
+export async function qrToPng(native: Rgba, size: number) {
+  const factor = Math.max(1, Math.floor(size / native.width));
+  const scaled = native.width * factor;
+  const pad = Math.floor((size - scaled) / 2);
+
+  return sharp(Buffer.from(native.data.buffer, native.data.byteOffset, native.data.byteLength), {
+    raw: { width: native.width, height: native.height, channels: 4 },
+  })
+    // Nearest neighbour: smoothing would blur the module cores decoders rely on.
+    .resize(scaled, scaled, { kernel: "nearest" })
     .extend({
-      top: quietZone,
-      bottom: quietZone,
-      left: quietZone,
-      right: quietZone,
-      background: { r: LIGHT, g: LIGHT, b: LIGHT },
+      top: pad,
+      left: pad,
+      bottom: size - scaled - pad,
+      right: size - scaled - pad,
+      background: { r: 255, g: 255, b: 255, alpha: 1 },
     })
-    // Nearest neighbour: smoothing the subpixels would blur the module centres
-    // a decoder depends on.
-    .resize(width, width, { kernel: "nearest" })
     .png()
     .toBuffer();
 }

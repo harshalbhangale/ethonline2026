@@ -1,7 +1,9 @@
 import jsQRImport from "jsqr";
 import QRCode from "qrcode";
 import sharp from "sharp";
-import { renderHalftoneQrPng } from "@/lib/assets/halftone";
+import { posterInk, type PosterDesign } from "@/lib/assets/design";
+import { qrToPng, renderPrintableQr } from "@/lib/assets/halftone";
+import type { Rgba } from "@/lib/assets/halftone-core";
 
 // jsqr is CommonJS and exposes the function both directly and as `.default`,
 // which interop resolves differently depending on the bundler.
@@ -40,39 +42,20 @@ export async function renderQrPng(payload: string) {
   return QRCode.toBuffer(payload, { ...qrOptions, type: "png" });
 }
 
-export type QrStyle = "HALFTONE" | "PLAIN";
+export type QrStyle = PosterDesign["style"];
 
 /**
- * Increasing fidelity to the plain code. Each step looks a little less like the
- * artwork and decodes a little more easily.
- */
-const halftoneLadder = [0.2, 0.35, 0.5, 0.7];
-
-/**
- * The brand's artwork woven into the code, but never at the cost of scanning.
- *
- * Every candidate is decoded before it is accepted, the bias climbs until one
- * reads, and a plain high-contrast code is always the floor. A poster that
- * cannot be scanned is worth less than an ugly one.
+ * The poster QR in the campaign's design, decoded under street conditions
+ * before it is returned (see renderPrintableQr).
  */
 export async function renderScannableQrPng(
   payload: string,
-  artwork: Buffer | null,
-): Promise<{ png: Buffer; style: QrStyle }> {
-  if (artwork) {
-    for (const bias of halftoneLadder) {
-      try {
-        const png = await renderHalftoneQrPng({ payload, artwork, bias });
-        const { matches } = await verifyQrPayload(png, payload);
-        if (matches) return { png, style: "HALFTONE" };
-      } catch (error) {
-        console.error("Halftone QR rendering failed", error);
-        break;
-      }
-    }
-  }
-
-  return { png: await renderQrPng(payload), style: "PLAIN" };
+  artwork: Rgba | null,
+  design: PosterDesign,
+  size = 900,
+): Promise<{ png: Buffer; style: QrStyle; design: PosterDesign }> {
+  const { native, design: used } = renderPrintableQr(payload, artwork, design);
+  return { png: await qrToPng(native, size), style: used.style, design: used };
 }
 
 /**
@@ -88,29 +71,33 @@ export async function renderPosterPng({
   venueName,
   shortCode,
   artwork = null,
+  design,
 }: {
   payload: string;
   headline: string;
   venueName: string;
   shortCode: string;
-  artwork?: Buffer | null;
+  artwork?: Rgba | null;
+  design: PosterDesign;
 }) {
-  const { png: qrPng, style } = await renderScannableQrPng(payload, artwork);
   const qrSize = 820;
+  const { png: qrPng, style } = await renderScannableQrPng(payload, artwork, design, qrSize);
+  // A brand-colour poster carries the colour in its frame and headline too.
+  const ink = posterInk(design);
   const qrX = Math.round((posterWidth - qrSize) / 2);
   const qrY = 380;
 
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${posterWidth}" height="${posterHeight}">
   <rect width="100%" height="100%" fill="#FFFFFF"/>
   <text x="${posterWidth / 2}" y="190" text-anchor="middle"
-    font-family="Helvetica, Arial, sans-serif" font-size="74" font-weight="700" fill="#0B0B0C">
+    font-family="Helvetica, Arial, sans-serif" font-size="74" font-weight="700" fill="${ink}">
     ${escapeXml(headline)}
   </text>
   <text x="${posterWidth / 2}" y="264" text-anchor="middle"
     font-family="Helvetica, Arial, sans-serif" font-size="40" fill="#4A4A4F">
     Scan to open
   </text>
-  <rect x="${qrX - 24}" y="${qrY - 24}" width="${qrSize + 48}" height="${qrSize + 48}" rx="28" fill="#FFFFFF" stroke="#0B0B0C" stroke-width="4"/>
+  <rect x="${qrX - 24}" y="${qrY - 24}" width="${qrSize + 48}" height="${qrSize + 48}" rx="28" fill="#FFFFFF" stroke="${ink}" stroke-width="4"/>
   <text x="${posterWidth / 2}" y="${qrY + qrSize + 140}" text-anchor="middle"
     font-family="Helvetica, Arial, sans-serif" font-size="44" font-weight="600" fill="#0B0B0C">
     ${escapeXml(venueName)}
@@ -125,13 +112,8 @@ export async function renderPosterPng({
   </text>
 </svg>`;
 
-  // Nearest neighbour so module edges stay hard at the poster's scale.
-  const scaled = await sharp(qrPng)
-    .resize(qrSize, qrSize, { kernel: "nearest" })
-    .toBuffer();
-
   const png = await sharp(Buffer.from(svg))
-    .composite([{ input: scaled, top: qrY, left: qrX }])
+    .composite([{ input: qrPng, top: qrY, left: qrX }])
     .png()
     .toBuffer();
 

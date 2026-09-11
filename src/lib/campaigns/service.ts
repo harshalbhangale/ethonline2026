@@ -1,3 +1,4 @@
+import { resolveDesign } from "@/lib/assets/design";
 import {
   CampaignStatus,
   type Campaign,
@@ -69,6 +70,7 @@ function toCampaignDto(campaign: Campaign): CampaignDto {
     locationStrategy: campaign.locationStrategy,
 
     artworkUrl: campaign.artworkUrl,
+    posterDesign: resolveDesign(campaign.posterDesign, campaign.assetType, Boolean(campaign.artworkUrl)),
     fundedAt: campaign.fundedAt?.toISOString() ?? null,
 
     escrowCampaignId: campaign.escrowCampaignId,
@@ -232,6 +234,7 @@ export async function updateCampaign(
   if (input.locationStrategy !== undefined)
     data.locationStrategy = input.locationStrategy;
   if (input.assetType !== undefined) data.assetType = input.assetType;
+  if (input.posterDesign !== undefined) data.posterDesign = input.posterDesign;
   if (input.wizardStep !== undefined) data.wizardStep = input.wizardStep;
 
   // The label always follows the structured geography it describes.

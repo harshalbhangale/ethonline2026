@@ -20,7 +20,10 @@
     "contracts:test": "cd contracts && forge test",
     "cre:test": "cd cre/placement-verifier && bun test",
     "e2e:sepolia": "node scripts/run-ts.cjs scripts/e2e-sepolia.ts",
-    "e2e:worker": "node scripts/run-ts.cjs scripts/e2e-worker.ts"
+    "e2e:worker": "node scripts/run-ts.cjs scripts/e2e-worker.ts",
+    "build:worker": "esbuild src/workers/poster.worker.ts --bundle --format=esm --platform=browser --minify --tsconfig=tsconfig.json --outfile=public/workers/poster.js",
+    "prebuild": "npm run build:worker",
+    "predev": "npm run build:worker"
   },
   "dependencies": {
     "@mapbox/search-js-react": "1.6.0",
@@ -51,6 +54,7 @@
     "@types/qrcode": "1.5.6",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "esbuild": "^0.25.10",
     "eslint": "8.57.1",
     "eslint-config-next": "15.5.25",
     "prisma": "7.10.0",

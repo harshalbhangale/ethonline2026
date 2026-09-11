@@ -6,6 +6,7 @@ import { AnimatePresence } from "motion/react";
 import FundingReceipt, {
   type FundingReceiptData,
 } from "@/components/campaigns/wizard/FundingReceipt";
+import PosterMockup from "@/components/poster/PosterMockup";
 import { Card } from "@/components/ui";
 import {
   authenticatedFetch,
@@ -68,6 +69,23 @@ export default function ReviewAndFundStep({
   // The receipt overlay opens as soon as funding starts and stays through the
   // transaction; `receipt` fills in when it lands.
   const [showReceipt, setShowReceipt] = useState(false);
+  const [artworkUrl, setArtworkUrl] = useState<string | null>(null);
+
+  // The poster mockup draws from the artwork itself, like the print path.
+  useEffect(() => {
+    let cancelled = false;
+    void authenticatedFetch<{ viewUrl: string | null }>(
+      getAccessToken,
+      `/api/campaigns/${campaign.id}/artwork`,
+    )
+      .then((response) => {
+        if (!cancelled) setArtworkUrl(response.viewUrl);
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, [campaign.id, getAccessToken]);
   const [receipt, setReceipt] = useState<FundingReceiptData | null>(null);
 
   const requestSequence = useRef(0);
@@ -245,6 +263,12 @@ export default function ReviewAndFundStep({
 
   return (
     <div className="space-y-5">
+      <PosterMockup
+        design={campaign.posterDesign}
+        artworkUrl={artworkUrl}
+        headline={campaign.name}
+      />
+
       <Card className="overflow-hidden">
         <div className="border-b border-line px-6 py-4">
           <h2 className="text-[16px] font-bold tracking-[-0.01em]">

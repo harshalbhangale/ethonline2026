@@ -293,6 +293,9 @@ model Campaign {
 
   artworkUrl  String? @map("artwork_url") @db.Text
   artworkHash String? @map("artwork_hash") @db.VarChar(128)
+  /// How the poster QR is drawn (style, colour, legibility, crop). Validated
+  /// and clamped to the asset tier by lib/assets/design.ts on every read.
+  posterDesign Json? @map("poster_design")
 
   /// Set by the Phase 2 mocked funding action. Replaced by onchain escrow in Phase 4.
   fundedAt         DateTime? @map("funded_at") @db.Timestamptz(3)

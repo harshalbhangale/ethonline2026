@@ -1,3 +1,4 @@
+import { posterDesignSchema } from "@/lib/assets/design";
 import { z } from "zod";
 import { normalizeCampaignDestination } from "@/lib/campaigns/destination";
 
@@ -131,6 +132,7 @@ export const campaignUpdateSchema = z
     radiusMeters: radiusMeters.optional(),
     locationStrategy: locationStrategy.optional(),
     assetType: assetType.optional(),
+    posterDesign: posterDesignSchema.optional(),
     wizardStep: wizardStep.optional(),
   })
   .refine((value) => Object.values(value).some((item) => item !== undefined), {

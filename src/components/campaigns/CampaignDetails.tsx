@@ -14,6 +14,7 @@ import AuthPrompt from "@/components/AuthPrompt";
 import CampaignResults from "@/components/campaigns/CampaignResults";
 import CampaignStatusBadge from "@/components/campaigns/CampaignStatusBadge";
 import EscrowPanel from "@/components/campaigns/EscrowPanel";
+import PosterGallery from "@/components/poster/PosterGallery";
 import PlacementBoard from "@/components/placements/PlacementBoard";
 import { Card } from "@/components/ui";
 import {
@@ -456,6 +457,8 @@ export default function CampaignDetails({ campaignId }: { campaignId: string }) 
       {campaign.fundedAt !== null && campaign.status !== "COMPLETE" ? (
         <LivePlacementMap campaignId={campaign.id} />
       ) : null}
+
+      {campaign.fundedAt !== null ? <PosterGallery campaignId={campaign.id} /> : null}
 
       <EscrowPanel campaignId={campaign.id} funded={campaign.fundedAt !== null} />
 

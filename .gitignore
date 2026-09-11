@@ -23,3 +23,6 @@ semantic-review/
 /.next-*/
 .vercel
 .deploy-keys/
+
+# Built by `npm run build:worker`
+/public/workers/

@@ -1,3 +1,4 @@
+import type { PosterDesign } from "@/lib/assets/design";
 export const campaignStatuses = [
   "DRAFT",
   "QUOTED",
@@ -112,6 +113,8 @@ export type CampaignDto = {
   locationStrategy: LocationStrategyValue | null;
 
   artworkUrl: string | null;
+  /** Resolved against the tier and artwork, so always renderable as-is. */
+  posterDesign: PosterDesign;
   fundedAt: string | null;
 
   /** Set when the campaign is funded through CampaignEscrow. */

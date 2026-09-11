@@ -1,3 +1,5 @@
+import { resolveDesign } from "@/lib/assets/design";
+import { decodeArtwork } from "@/lib/assets/halftone";
 import { renderPosterPng } from "@/lib/assets/qr";
 import { getOwnedAssetByShortCode } from "@/lib/assets/service";
 import { requireBrandContext } from "@/lib/auth/require-brand";
@@ -23,10 +25,15 @@ export async function GET(request: Request, { params }: RouteContext) {
     const { id, code } = await params;
     const asset = await getOwnedAssetByShortCode(context, id, code);
 
-    // Re-rendered with the same artwork, so a preview matches what was printed.
-    const artwork = asset.campaign.artworkUrl
-      ? await downloadArtwork(asset.campaign.artworkUrl)
-      : null;
+    // Re-rendered with the same artwork and design, so a preview matches
+    // what was printed.
+    const rawArtwork = asset.campaign.artworkUrl ? await downloadArtwork(asset.campaign.artworkUrl) : null;
+    const artwork = rawArtwork ? await decodeArtwork(rawArtwork) : null;
+    const design = resolveDesign(
+      asset.campaign.posterDesign,
+      asset.campaign.assetType,
+      artwork !== null,
+    );
 
     const { png: poster } = await renderPosterPng({
       payload: asset.qrPayload,
@@ -34,6 +41,7 @@ export async function GET(request: Request, { params }: RouteContext) {
       venueName: asset.location?.venueName ?? "Approved location",
       shortCode: asset.shortCode,
       artwork,
+      design,
     });
 
     return new Response(new Uint8Array(poster), {
