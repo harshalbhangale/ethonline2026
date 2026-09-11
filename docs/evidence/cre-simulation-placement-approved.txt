@@ -1,0 +1,43 @@
+# Chainlink CRE confidential workflow simulation: placement 1 (approved)
+# Command: cre workflow simulate ./placement-verifier --target staging-settings --non-interactive --trigger-index 0 --http-payload '{"placementId":"cmtvyq9im000g9uitkspfo6rc"}' --broadcast
+# Report transaction: https://sepolia.etherscan.io/tx/0xa26b634ce2577d31f2e10b7ebbf4bee6d541e6e868f08e4f3d2c2b9caa1f3dff
+
+Initializing...
+Loading settings...
+Checking RPC connectivity...
+Compiling workflow...
+✓ Workflow compiled
+✓ Simulation limits enabled
+  HTTP: req=120kb resp=250kb timeout=10s | ConfHTTP: req=125kb resp=500kb timeout=1m30s | Consensus obs=25kb | ChainWrite evm_report=50kb evm_gas=10000000 solana_report=265b solana_cu=300000 | WASM binary=100mb compressed=20mb
+  Binary hash: [hash]
+  Config hash: [hash]
+✓ Parsed JSON input successfully
+✓ Created HTTP trigger payload with 1 fields
+2026-09-11T01:49:36Z [SIMULATION] Simulator Initialized
+
+2026-09-11T01:49:36Z [SIMULATION] Running trigger trigger=http-trigger@1.0.0-alpha
+╭────────────────────────────────────────────────────────────────────────────────────────────────────╮
+│ Handler requested TEE Execution                                                                    │
+│ The simulator is not a real TEE, and is meant to debug.                                            │
+│ Do not use it for sensitive information.                                                           │
+│ During real execution, user logs for this trigger will not be visible, and will not leave the TEE. │
+│ They are presented in the simulator for debugging only.                                            │
+│                                                                                                    │
+╰────────────────────────────────────────────────────────────────────────────────────────────────────╯
+
+2026-09-11T01:49:36Z [USER LOG] placement-verifier secrets released into enclave
+2026-09-11T01:49:39Z [USER LOG] placement-verifier evidence bundle received (contents stay in enclave)
+2026-09-11T01:49:39Z [USER LOG] placement-verifier verdict approved=true reasons=none
+2026-09-11T01:49:48Z [USER LOG] placement-verifier report written tx=0xa26b634ce2577d31f2e10b7ebbf4bee6d541e6e868f08e4f3d2c2b9caa1f3dff
+
+✓ Workflow Simulation Result:
+"{\"placementId\":\"cmtvyq9im000g9uitkspfo6rc\",\"onchainPlacementId\":\"0x9c6a0975bb3a131a25cc11329fdcf80ba14f3d39e218d583aec39cca3cc63a52\",\"evidenceHash\":\"0x3ed6c40683fd4149d6db768b4127ccd2d7ded2dbb42ef0f918620fd0bb868bbd\",\"approved\":true,\"reasons\":[],\"txHash\":\"0xa26b634ce2577d31f2e10b7ebbf4bee6d541e6e868f08e4f3d2c2b9caa1f3dff\"}"
+
+2026-09-11T01:49:57Z [SIMULATION] Execution finished signal received
+2026-09-11T01:49:57Z [SIMULATION] Skipping WorkflowEngineV2
+
+╭──────────────────────────────────────────────────────╮
+│ Simulation complete! Ready to deploy your workflow?  │
+│                                                      │
+│ Run cre account access to request deployment access. │
+╰──────────────────────────────────────────────────────╯

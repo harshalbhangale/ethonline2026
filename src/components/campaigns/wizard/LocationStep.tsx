@@ -255,7 +255,7 @@ export default function LocationStep({
         </div>
       </Card>
 
-      <div className="h-[420px] overflow-hidden rounded-[20px] border border-line lg:h-[calc(100vh-268px)] lg:min-h-[520px]">
+      <div className="h-[420px] overflow-hidden rounded-[20px] border border-line lg:h-[calc(min(100vh,960px)-300px)] lg:min-h-[440px]">
         <MapboxGlobe
           flyTo={
             selected

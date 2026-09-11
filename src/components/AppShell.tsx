@@ -98,8 +98,8 @@ const nav = [
   },
   {
     href: "/brand/payments",
-    label: "Payments",
-    hint: "Funding and payouts",
+    label: "Treasury",
+    hint: "Wallet, policy and payouts",
     Icon: PaymentIcon,
   },
   {

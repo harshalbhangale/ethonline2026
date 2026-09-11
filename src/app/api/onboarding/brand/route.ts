@@ -1,7 +1,7 @@
 import { OrganizationRole } from "@/generated/prisma/client";
+import { buildMeResponse } from "@/lib/auth/me";
 import { findBrandMembership } from "@/lib/auth/membership";
 import { requireUser } from "@/lib/auth/require-user";
-import type { MeResponse } from "@/lib/auth/types";
 import { getPrismaClient } from "@/lib/database/prisma";
 import { apiErrorResponse } from "@/lib/http/api-error";
 
@@ -12,7 +12,7 @@ export async function POST(request: Request) {
   try {
     const user = await requireUser(request);
     const prisma = getPrismaClient();
-    const membership = await prisma.$transaction(async (transaction) => {
+    await prisma.$transaction(async (transaction) => {
       const existing = await findBrandMembership(transaction, user.userId);
       if (existing) return existing;
 
@@ -43,19 +43,7 @@ export async function POST(request: Request) {
       });
     });
 
-    const response: MeResponse = {
-      user: {
-        id: user.userId,
-        privyUserId: user.privyUserId,
-      },
-      organization: {
-        id: membership.organization.id,
-        name: membership.organization.name,
-      },
-      role: membership.role,
-    };
-
-    return Response.json(response);
+    return Response.json(await buildMeResponse(user));
   } catch (error) {
     return apiErrorResponse(error);
   }

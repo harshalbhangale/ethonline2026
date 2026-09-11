@@ -70,6 +70,10 @@ function toCampaignDto(campaign: Campaign): CampaignDto {
     artworkUrl: campaign.artworkUrl,
     fundedAt: campaign.fundedAt?.toISOString() ?? null,
 
+    escrowCampaignId: campaign.escrowCampaignId,
+    escrowAddress: campaign.escrowAddress,
+    fundingTxHash: campaign.escrowCampaignId ? campaign.fundingReference : null,
+
     createdAt: campaign.createdAt.toISOString(),
     updatedAt: campaign.updatedAt.toISOString(),
   };

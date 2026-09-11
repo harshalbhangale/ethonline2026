@@ -1,0 +1,30 @@
+{
+  "network": "sepolia",
+  "chainId": 11155111,
+  "deployedAt": "2026-09-10T19:39:15.272Z",
+  "contracts": {
+    "MockUSDC": {
+      "address": "0xa76bad9b75814553a75bd3db189c47fb9030549a",
+      "txHash": "0x1044b2603a6db26fc18a3c93e912fee652284d7428d9166e9a27852e5616438f",
+      "block": 11677029
+    },
+    "CampaignEscrow": {
+      "address": "0xf422ddfe8153d625b0724d5116eb73c75ef918d0",
+      "txHash": "0xdbcd1f557d8525ab58f38396ef3c7d88f4931333c9cc6b0094844ab02bbdb192",
+      "block": 11677030
+    },
+    "CampaignEscrowCircleUSDC": {
+      "address": "0xD173f09A11d102E748D258e61310A3D9F2944096",
+      "txHash": "0x596f028aab1de2b2a479ecfa0dcc9a9138ccab23d48701437838fe6af387060e",
+      "token": "0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238",
+      "note": "Same contract bound to Circle Sepolia USDC. Switch by setting NEXT_PUBLIC_USDC_ADDRESS and NEXT_PUBLIC_ESCROW_ADDRESS."
+    }
+  },
+  "operator": "0xa9fa32f947bEcDf344490e195f710B814307f823",
+  "creForwarder": "0x15fC6ae953E024d975e77382eEeC56A9101f9F88",
+  "default": {
+    "token": "0xa76bad9b75814553a75bd3db189c47fb9030549a",
+    "escrow": "0xf422ddfe8153d625b0724d5116eb73c75ef918d0"
+  },
+  "verification": "Sourcify exact match"
+}

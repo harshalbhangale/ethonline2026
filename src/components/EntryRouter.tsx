@@ -186,16 +186,20 @@ export default function EntryRouter() {
         : "loading";
 
   return (
-    <main className="flex min-h-screen items-center justify-center px-5 py-12">
-      <div className="w-full max-w-[760px]">
+    <main className="grid min-h-screen lg:grid-cols-2">
+      {/* Reserved for the hero visual. Hidden on small screens. */}
+      <div className="hidden lg:block" />
+
+      <div className="flex items-center justify-center px-5 py-12 sm:px-10">
+      <div className="w-full max-w-[520px]">
         <div className="mb-8 flex items-center justify-center gap-2.5">
           <Mark />
           <span className="text-[21px] font-extrabold tracking-[-0.03em]">StickerBomb</span>
         </div>
 
-        <div className="panel rounded-[28px] border border-line px-6 py-12 text-center sm:px-12 sm:py-16">
+        <div className="panel rounded-[28px] border border-line px-6 py-12 text-center sm:px-10 sm:py-14">
           <span className="inline-flex rounded-full border border-badge/40 px-3 py-1 text-[11.5px] font-bold uppercase tracking-[0.1em] text-badge">Brand portal</span>
-          <h1 className="mx-auto mt-5 max-w-[16ch] text-[42px] font-extrabold leading-[1.04] tracking-[-0.045em] sm:text-[56px]">Verified physical campaigns, from one sentence.</h1>
+          <h1 className="mx-auto mt-5 max-w-[16ch] text-[38px] font-extrabold leading-[1.04] tracking-[-0.045em] sm:text-[46px]">Verified physical campaigns, from one sentence.</h1>
           <p className="mx-auto mt-5 max-w-[54ch] text-[15px] leading-relaxed text-muted">Create a campaign, set its placement plan and keep the draft safely in your organization workspace.</p>
 
           {currentStatus === "error" ? (
@@ -231,6 +235,7 @@ export default function EntryRouter() {
             <Link href="/worker" className="inline-flex h-11 items-center rounded-xl border border-line px-5 text-[14px] font-semibold hover:bg-raised">Worker Portal</Link>
           </div>
         </div>
+      </div>
       </div>
     </main>
   );

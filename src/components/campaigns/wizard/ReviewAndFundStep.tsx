@@ -14,7 +14,9 @@ import {
 } from "@/lib/campaigns/format";
 import { formatRadius } from "@/lib/campaigns/geo";
 import type { CampaignDto } from "@/lib/campaigns/types";
+import type { FundCampaignResult } from "@/lib/funding/service";
 import type { CampaignQuoteResponse } from "@/lib/quotes/types";
+import type { TreasuryDto, TreasuryResponse } from "@/lib/treasury/types";
 
 /** Turns the quote-readiness field errors into something a brand can act on. */
 const fieldLabels: Record<string, string> = {
@@ -117,16 +119,61 @@ export default function ReviewAndFundStep({
     return cancelRequest;
   }, [loadQuote, cancelRequest]);
 
+  const [treasury, setTreasury] = useState<TreasuryDto | null>(null);
+  const [treasuryError, setTreasuryError] = useState<string | null>(null);
+  const [toppingUp, setToppingUp] = useState(false);
+  const [notice, setNotice] = useState<string | null>(null);
+
+  const loadTreasury = useCallback(async () => {
+    try {
+      const response = await authenticatedFetch<TreasuryResponse>(getAccessToken, "/api/treasury");
+      setTreasury(response.treasury);
+      setTreasuryError(response.treasury.walletError);
+    } catch (caught) {
+      setTreasuryError(
+        caught instanceof ClientApiError ? caught.message : "Could not load your treasury.",
+      );
+    }
+  }, [getAccessToken]);
+
+  useEffect(() => {
+    void loadTreasury();
+  }, [loadTreasury]);
+
+  async function topUp() {
+    setToppingUp(true);
+    setError(null);
+    try {
+      const response = await authenticatedFetch<TreasuryResponse>(getAccessToken, "/api/treasury/top-up", {
+        method: "POST",
+      });
+      setTreasury(response.treasury);
+    } catch (caught) {
+      setError(caught instanceof ClientApiError ? caught.message : "Could not add test funds.");
+    } finally {
+      setToppingUp(false);
+    }
+  }
+
   async function fund() {
     setFunding(true);
     setError(null);
+    setNotice(null);
 
     try {
-      await authenticatedFetch<{ mocked: boolean }>(
+      const result = await authenticatedFetch<FundCampaignResult>(
         getAccessToken,
         `/api/campaigns/${campaign.id}/fund`,
         { method: "POST" },
       );
+
+      if (result.status === "PENDING_APPROVAL") {
+        setNotice(
+          "This funding is above your approval threshold. A teammate can approve it on the Treasury page; the treasury pays as soon as they do.",
+        );
+        setFunding(false);
+        return;
+      }
 
       onFunded();
     } catch (caught) {
@@ -136,8 +183,21 @@ export default function ReviewAndFundStep({
           : "Could not fund this campaign.",
       );
       setFunding(false);
+      void loadTreasury();
     }
   }
+
+  const onchain = treasury?.onchain ?? false;
+  const symbol = treasury?.token?.symbol ?? "USDC";
+  const neededUnits = quote ? BigInt(quote.totalMinor) * BigInt(10_000) : null;
+  const heldUnits = treasury?.balances ? BigInt(treasury.balances.tokenUnits) : null;
+  const shortfall = neededUnits !== null && heldUnits !== null && heldUnits < neededUnits;
+  const needsApproval =
+    quote && treasury?.approvalThresholdMinor
+      ? BigInt(quote.totalMinor) > BigInt(treasury.approvalThresholdMinor)
+      : false;
+  const fundDisabled =
+    !quote || funding || loading || (onchain && (!treasury?.wallet || shortfall));
 
   const summaryRows: [string, string][] = [
     ["Campaign", campaign.name],
@@ -283,24 +343,79 @@ export default function ReviewAndFundStep({
       <Card className="overflow-hidden">
         <div className="px-6 py-5">
           <span className="inline-flex rounded-full border border-badge/40 px-3 py-1 text-[11.5px] font-bold uppercase tracking-[0.1em] text-badge">
-            Simulated payment
+            {onchain ? "Onchain escrow · Sepolia" : "Simulated payment"}
           </span>
-          <h2 className="mt-4 text-[16px] font-bold">Fund campaign</h2>
-          <p className="mt-2 max-w-[62ch] text-[13.5px] leading-relaxed text-muted">
-            Funding moves no money yet. It approves the quote, claims your
-            approved surfaces and generates a uniquely coded poster for each
-            placement. Onchain escrow replaces this step in Phase 4.
+          <h2 className="mt-4 text-[16px] font-bold">Fund from your treasury</h2>
+          <p className="mt-2 max-w-[64ch] text-[13.5px] leading-relaxed text-muted">
+            {onchain
+              ? `Your organization's Privy wallet deposits the quote into CampaignEscrow. Privy's policy only lets it approve and fund the escrow, and workers are paid from escrow only after Chainlink confidential verification. You never sign or pay gas.`
+              : "Escrow is not configured on this server, so funding approves the quote and issues posters without moving money."}
           </p>
+
+          {onchain ? (
+            <div className="mt-4 grid gap-3 rounded-2xl border border-line bg-raised/50 px-4 py-3.5 sm:grid-cols-3">
+              <div>
+                <p className="text-[11px] font-bold uppercase tracking-[0.09em] text-faint">Treasury</p>
+                <p className="mt-1 font-mono text-[12.5px] font-semibold">
+                  {treasury?.wallet
+                    ? `${treasury.wallet.address.slice(0, 6)}…${treasury.wallet.address.slice(-4)}`
+                    : treasuryError
+                      ? "Unavailable"
+                      : "Loading…"}
+                </p>
+              </div>
+              <div>
+                <p className="text-[11px] font-bold uppercase tracking-[0.09em] text-faint">Available</p>
+                <p className={`mt-1 text-[14px] font-bold tabular-nums ${shortfall ? "text-fail" : ""}`}>
+                  {treasury?.balances ? `${treasury.balances.token} ${symbol}` : "—"}
+                </p>
+              </div>
+              <div>
+                <p className="text-[11px] font-bold uppercase tracking-[0.09em] text-faint">This campaign</p>
+                <p className="mt-1 text-[14px] font-bold tabular-nums">
+                  {quote ? `${quote.total} ${symbol}` : "—"}
+                </p>
+              </div>
+            </div>
+          ) : null}
+
+          {treasuryError ? <p className="mt-3 text-[12.5px] text-fail">{treasuryError}</p> : null}
+          {needsApproval ? (
+            <p className="mt-3 text-[12.5px] text-badge">
+              This is above your approval threshold, so a teammate will need to approve it.
+            </p>
+          ) : null}
+          {notice ? <p className="mt-3 text-[12.5px] font-semibold text-paid">{notice}</p> : null}
+          {error && quote ? <p className="mt-3 text-[12.5px] text-fail">{error}</p> : null}
         </div>
 
         <div className="flex flex-wrap items-center justify-end gap-3 border-t border-line px-6 py-4">
+          {funding ? (
+            <span className="mr-auto text-[12.5px] text-muted">
+              Signing with your Privy treasury and waiting for Sepolia. This takes about a minute.
+            </span>
+          ) : null}
+          {onchain && shortfall && treasury?.token?.mintable ? (
+            <button
+              type="button"
+              disabled={toppingUp || funding}
+              onClick={() => void topUp()}
+              className="h-11 rounded-xl border border-line px-4 text-[13.5px] font-semibold hover:bg-raised disabled:opacity-50"
+            >
+              {toppingUp ? "Adding test funds…" : `Add 500 test ${symbol}`}
+            </button>
+          ) : null}
           <button
             type="button"
-            disabled={!quote || funding || loading}
+            disabled={fundDisabled}
             onClick={() => void fund()}
             className="h-11 rounded-xl bg-solid px-5 text-[14.5px] font-semibold text-solid-ink transition-opacity enabled:hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-35"
           >
-            {funding ? "Funding campaign…" : "Fund campaign"}
+            {funding
+              ? "Funding campaign…"
+              : onchain && quote
+                ? `Fund ${quote.total} ${symbol}`
+                : "Fund campaign"}
           </button>
         </div>
       </Card>

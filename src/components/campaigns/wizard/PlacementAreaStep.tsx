@@ -530,7 +530,7 @@ export default function PlacementAreaStep({
     <div className="grid gap-5 lg:grid-cols-[380px_1fr]">
       <Card className="p-5">{controls}</Card>
 
-      <div className="relative h-[440px] overflow-hidden rounded-[20px] border border-line lg:h-[calc(100vh-268px)] lg:min-h-[540px]">
+      <div className="relative h-[440px] overflow-hidden rounded-[20px] border border-line lg:h-[calc(min(100vh,960px)-300px)] lg:min-h-[440px]">
         <MapboxGlobe
           spin={false}
           cursor={addingArea ? "crosshair" : undefined}

@@ -65,6 +65,11 @@ export type CampaignDto = {
   artworkUrl: string | null;
   fundedAt: string | null;
 
+  /** Set when the campaign is funded through CampaignEscrow. */
+  escrowCampaignId: string | null;
+  escrowAddress: string | null;
+  fundingTxHash: string | null;
+
   createdAt: string;
   updatedAt: string;
 };

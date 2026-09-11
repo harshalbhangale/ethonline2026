@@ -1,0 +1,6 @@
+# CRE project settings for the StickerBomb placement verifier.
+# RPC URLs are public Sepolia endpoints; no secrets live here.
+staging-settings:
+  rpcs:
+    - chain-name: ethereum-testnet-sepolia
+      url: https://ethereum-sepolia-rpc.publicnode.com

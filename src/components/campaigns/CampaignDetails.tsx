@@ -11,6 +11,8 @@ import {
 } from "react";
 import AuthPrompt from "@/components/AuthPrompt";
 import CampaignStatusBadge from "@/components/campaigns/CampaignStatusBadge";
+import EscrowPanel from "@/components/campaigns/EscrowPanel";
+import PlacementBoard from "@/components/placements/PlacementBoard";
 import { Card } from "@/components/ui";
 import {
   authenticatedFetch,
@@ -342,14 +344,32 @@ export default function CampaignDetails({ campaignId }: { campaignId: string }) 
             </div>
             <p className="mt-2 max-w-[68ch] text-[14px] leading-relaxed text-muted">{campaign.briefText}</p>
           </div>
-          {campaign.status === "DRAFT" ? (
-            <button
-              onClick={() => setEditingScope(editing ? null : requestScope)}
-              className="h-10 rounded-xl border border-line px-4 text-[13px] font-semibold hover:bg-raised"
-            >
-              {editing ? "Close editor" : "Edit draft"}
-            </button>
-          ) : null}
+          <div className="flex flex-wrap gap-2">
+            {campaign.status === "DRAFT" ? (
+              <>
+                <button
+                  onClick={() => setEditingScope(editing ? null : requestScope)}
+                  className="h-10 rounded-xl border border-line px-4 text-[13px] font-semibold hover:bg-raised"
+                >
+                  {editing ? "Close editor" : "Edit details"}
+                </button>
+                <Link
+                  href={`/brand/new?campaign=${campaign.id}`}
+                  className="inline-flex h-10 items-center rounded-xl bg-solid px-4 text-[13px] font-semibold text-solid-ink hover:opacity-90"
+                >
+                  Continue setup →
+                </Link>
+              </>
+            ) : null}
+            {campaign.status === "QUOTED" ? (
+              <Link
+                href={`/brand/new?campaign=${campaign.id}&step=review`}
+                className="inline-flex h-10 items-center rounded-xl bg-solid px-4 text-[13px] font-semibold text-solid-ink hover:opacity-90"
+              >
+                Fund campaign →
+              </Link>
+            ) : null}
+          </div>
         </div>
       </div>
 
@@ -391,21 +411,9 @@ export default function CampaignDetails({ campaignId }: { campaignId: string }) 
         </div>
       </Card>
 
-      <div className="grid gap-4 md:grid-cols-3">
-        {[
-          ["Quote", "A deterministic campaign quote will appear here in Phase 2."],
-          ["QR assets", "Unique printable assets are generated after quote approval."],
-          ["Placements", "Installation and verification progress will be tracked here."],
-        ].map(([title, body]) => (
-          <Card key={title} className="p-5">
-            <div className="flex items-center justify-between gap-3">
-              <h2 className="text-[15px] font-bold">{title}</h2>
-              <span className="rounded-full bg-raised px-2.5 py-1 text-[10.5px] font-bold uppercase tracking-[0.08em] text-faint">Next phase</span>
-            </div>
-            <p className="mt-3 text-[12.5px] leading-relaxed text-muted">{body}</p>
-          </Card>
-        ))}
-      </div>
+      <EscrowPanel campaignId={campaign.id} funded={campaign.fundedAt !== null} />
+
+      <PlacementBoard campaignId={campaign.id} funded={campaign.fundedAt !== null} />
 
       <p className="text-[11.5px] text-faint">Created {formatCampaignDate(campaign.createdAt, true)} · Last updated {formatCampaignDate(campaign.updatedAt, true)}</p>
     </div>
