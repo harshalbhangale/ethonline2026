@@ -1,10 +1,16 @@
 "use client";
 
+import {
+  CaretDownIcon,
+  CheckIcon,
+  CopyIcon,
+  SignOutIcon,
+} from "@phosphor-icons/react/dist/ssr";
 import { usePrivy, useWallets } from "@privy-io/react-auth";
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 
 function CampaignIcon() {
   return (
@@ -146,9 +152,32 @@ function truncateAddress(address: string) {
 }
 
 function Wallet() {
-  const { ready, authenticated, login, logout } = usePrivy();
+  const { ready, authenticated, login, logout, user } = usePrivy();
   const { wallets } = useWallets();
   const address = wallets[0]?.address;
+  const [open, setOpen] = useState(false);
+  const [copied, setCopied] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
+
+  // Closing on outside click and Escape is what makes this read as a real
+  // menu rather than a button that happens to show a panel.
+  useEffect(() => {
+    if (!open) return;
+
+    function onPointerDown(event: PointerEvent) {
+      if (!menuRef.current?.contains(event.target as Node)) setOpen(false);
+    }
+    function onKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") setOpen(false);
+    }
+
+    document.addEventListener("pointerdown", onPointerDown);
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.removeEventListener("pointerdown", onPointerDown);
+      document.removeEventListener("keydown", onKeyDown);
+    };
+  }, [open]);
 
   if (!ready) {
     return <div className="h-10 w-24 animate-pulse rounded-xl bg-raised" />;
@@ -156,14 +185,65 @@ function Wallet() {
 
   if (authenticated) {
     return (
-      <button
-        onClick={logout}
-        title="Sign out"
-        className="flex h-10 items-center gap-2 rounded-xl border border-line px-3.5 text-[14px] font-medium"
-      >
-        <span className="h-2 w-2 rounded-full bg-paid" />
-        {address ? truncateAddress(address) : "Connected"}
-      </button>
+      <div ref={menuRef} className="relative">
+        <button
+          onClick={() => setOpen((value) => !value)}
+          aria-expanded={open}
+          aria-haspopup="menu"
+          className="flex h-10 items-center gap-2 rounded-xl border border-line px-3.5 text-[14px] font-medium transition-colors hover:bg-raised"
+        >
+          <span className="h-2 w-2 rounded-full bg-paid" />
+          {address ? truncateAddress(address) : "Connected"}
+          <CaretDownIcon
+            weight="bold"
+            className={`h-3 w-3 text-faint transition-transform ${open ? "rotate-180" : ""}`}
+          />
+        </button>
+
+        {open ? (
+          <div
+            role="menu"
+            className="absolute right-0 top-[calc(100%+8px)] z-50 w-64 overflow-hidden rounded-xl border border-line bg-surface shadow-lg"
+          >
+            <div className="border-b border-line px-3.5 py-3">
+              <p className="text-[11px] font-semibold uppercase tracking-wide text-faint">
+                Signed in
+              </p>
+              <p className="mt-0.5 truncate text-[13px] text-muted">
+                {user?.email?.address ?? user?.google?.email ?? "Privy account"}
+              </p>
+              {address ? (
+                <button
+                  onClick={() => {
+                    void navigator.clipboard.writeText(address);
+                    setCopied(true);
+                    setTimeout(() => setCopied(false), 1500);
+                  }}
+                  className="mt-2 flex w-full items-center justify-between gap-2 rounded-lg border border-line px-2.5 py-1.5 text-[12.5px] font-mono text-ink transition-colors hover:bg-raised"
+                >
+                  {truncateAddress(address)}
+                  {copied ? (
+                    <CheckIcon weight="bold" className="h-3.5 w-3.5 shrink-0 text-paid" />
+                  ) : (
+                    <CopyIcon weight="bold" className="h-3.5 w-3.5 shrink-0 text-faint" />
+                  )}
+                </button>
+              ) : null}
+            </div>
+            <button
+              role="menuitem"
+              onClick={() => {
+                setOpen(false);
+                void logout();
+              }}
+              className="flex w-full items-center gap-2.5 px-3.5 py-3 text-left text-[13.5px] font-medium text-fail transition-colors hover:bg-fail/10"
+            >
+              <SignOutIcon weight="bold" className="h-4 w-4" />
+              Sign out
+            </button>
+          </div>
+        ) : null}
+      </div>
     );
   }
 
