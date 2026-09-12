@@ -2,6 +2,7 @@
 
 import { usePrivy } from "@privy-io/react-auth";
 import { useEffect, useState } from "react";
+import { SelfieCheckCard } from "@/components/worker/SelfieCheckCard";
 import { authenticatedFetch } from "@/lib/api/authenticated-fetch";
 
 type Profile = {
@@ -108,6 +109,8 @@ export default function WorkerProfile() {
             </p>
           ) : null}
         </div>
+
+        <SelfieCheckCard />
       </div>
     </>
   );
