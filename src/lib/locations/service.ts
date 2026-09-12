@@ -599,9 +599,19 @@ export async function listServiceableCities(): Promise<ServiceableCity[]> {
   return cities;
 }
 
+/**
+ * Approved cities kept out of the wizard's city picker even though their
+ * surfaces remain APPROVED and usable everywhere else (funding, jobs,
+ * verification). Not offered as a starting point for new campaigns.
+ */
+const hiddenFromWizardCities = new Set(["Jalgaon"]);
+
 async function computeServiceableCities(): Promise<ServiceableCity[]> {
   const locations = await getPrismaClient().location.findMany({
-    where: { permissionStatus: LocationPermissionStatus.APPROVED },
+    where: {
+      permissionStatus: LocationPermissionStatus.APPROVED,
+      city: { notIn: Array.from(hiddenFromWizardCities) },
+    },
     select: {
       city: true,
       countryCode: true,
