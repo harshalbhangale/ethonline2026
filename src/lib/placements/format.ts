@@ -47,7 +47,7 @@ export const placementSteps = [
 /** Label of the next demo-control step for a placement, if any. */
 export const demoStepLabels: Partial<Record<PlacementStatusValue, string>> = {
   AWAITING_INSTALL: "Send a worker",
-  INSTALLING: "Stick & verify on site",
+  INSTALLING: "Simulate install + verify",
   AWAITING_VERIFIER: "Send a spot checker",
   VERIFYING: "Confirm spot check",
   READY_FOR_FINAL_VERIFICATION: "Run verification again",

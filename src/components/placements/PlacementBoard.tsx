@@ -4,7 +4,7 @@ import { usePrivy } from "@privy-io/react-auth";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Card } from "@/components/ui";
 import { authenticatedFetch } from "@/lib/api/authenticated-fetch";
-import { formatCampaignBudget } from "@/lib/campaigns/format";
+import { formatCampaignBudget, formatCampaignDate } from "@/lib/campaigns/format";
 import { explorerTxUrl } from "@/lib/chain/explorer";
 import {
   demoStepLabels,
@@ -61,6 +61,105 @@ function PlacementProgress({ status }: { status: PlacementStatusValue }) {
     <ol className="flex items-center gap-1.5" aria-label={`${done} of ${placementSteps.length} steps complete`}>
       {placementSteps.map((step, index) => (
         <li key={step} title={step} className={`h-1.5 w-8 rounded-full ${index < done ? "bg-paid" : "bg-line"}`} />
+      ))}
+    </ol>
+  );
+}
+
+type TimelineEventState = "done" | "active" | "failed" | "pending";
+type TimelineEvent = { label: string; time: string | null; state: TimelineEventState };
+
+/**
+ * "This is exactly what's happening right now" for one poster, in the order
+ * it actually happens. Unlike the compact dot progress above, this names each
+ * step and stamps it with when it happened (or says it's happening now).
+ */
+function buildPlacementTimeline(placement: PlacementDto): TimelineEvent[] {
+  const installerJob = placement.jobs.find((job) => job.role === "INSTALLER") ?? null;
+  const verifierJob = placement.jobs.find((job) => job.role === "VERIFIER") ?? null;
+  const recaptured = placement.status === "NEEDS_RECAPTURE";
+  const cancelled = placement.status === "CANCELLED";
+
+  const jobOpened: TimelineEvent = { label: "Poster ready, job open to workers", time: placement.createdAt, state: "done" };
+
+  const installerAccepted: TimelineEvent = installerJob?.acceptedAt
+    ? { label: "A worker accepted the install job", time: installerJob.acceptedAt, state: "done" }
+    : {
+        label: "Waiting for a worker to accept the install job",
+        time: null,
+        state: cancelled ? "pending" : "active",
+      };
+
+  const installed: TimelineEvent = placement.installedAt
+    ? { label: "Poster installed, proof submitted", time: placement.installedAt, state: "done" }
+    : recaptured
+      ? { label: "Proof rejected, sent back for a new install photo", time: installerJob?.submittedAt ?? null, state: "failed" }
+      : {
+          label:
+            placement.status === "INSTALLING"
+              ? "Our Captain is on site, pasting the poster up right now"
+              : "Waiting for the install photo",
+          time: null,
+          state: installerAccepted.state === "done" ? "active" : "pending",
+        };
+
+  const verifierAccepted: TimelineEvent = verifierJob?.acceptedAt
+    ? { label: "A different worker took the independent check", time: verifierJob.acceptedAt, state: "done" }
+    : {
+        label: "Waiting for an independent worker to check it",
+        time: null,
+        state: installed.state === "done" ? "active" : "pending",
+      };
+
+  const verified: TimelineEvent = placement.verifiedAt
+    ? { label: "Verified, escrow released the reward", time: placement.verifiedAt, state: "done" }
+    : {
+        label: isRunning(placement.verification) ? "Verifying both proofs right now" : "Waiting for verification",
+        time: null,
+        state: verifierAccepted.state === "done" ? "active" : "pending",
+      };
+
+  const events = [jobOpened, installerAccepted, installed, verifierAccepted, verified];
+
+  if (placement.removedAt) {
+    events.push({ label: "Poster removed, cleanup reward released", time: placement.removedAt, state: "done" });
+  }
+
+  return events;
+}
+
+const timelineDotStyles: Record<TimelineEventState, string> = {
+  done: "bg-paid",
+  active: "bg-badge animate-pulse",
+  failed: "bg-fail",
+  pending: "bg-line",
+};
+
+const timelineTextStyles: Record<TimelineEventState, string> = {
+  done: "text-ink",
+  active: "text-badge font-semibold",
+  failed: "text-fail font-semibold",
+  pending: "text-faint",
+};
+
+function PlacementTimeline({ placement }: { placement: PlacementDto }) {
+  const events = buildPlacementTimeline(placement);
+
+  return (
+    <ol className="mt-3 space-y-2.5 border-t border-dashed border-line pt-3">
+      {events.map((event, index) => (
+        <li key={index} className="flex items-start gap-2.5">
+          <span className={`mt-1 h-2 w-2 shrink-0 rounded-full ${timelineDotStyles[event.state]}`} />
+          <div className="min-w-0">
+            <p className={`text-[12.5px] leading-tight ${timelineTextStyles[event.state]}`}>
+              {event.label}
+              {event.state === "active" ? " — happening now" : ""}
+            </p>
+            {event.time ? (
+              <p className="mt-0.5 text-[11px] text-faint">{formatCampaignDate(event.time, true)}</p>
+            ) : null}
+          </div>
+        </li>
       ))}
     </ol>
   );
@@ -211,30 +310,37 @@ function PlacementRow({
         </div>
       </div>
 
-      <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1.5 text-[11.5px]">
-        <span className={placement.onchain.placementKey ? "font-semibold text-paid" : "text-faint"}>
-          {placement.onchain.placementKey ? "● Rewards reserved in escrow" : "○ Not yet in escrow"}
-        </span>
-        {placement.proofs.installer ? (
-          <span className="text-muted">Installer proof {placement.proofs.installer.toLowerCase()}</span>
-        ) : null}
-        {placement.proofs.verifier ? (
-          <span className="text-muted">Verifier proof {placement.proofs.verifier.toLowerCase()}</span>
-        ) : null}
-        {placement.transactions.map((transaction) => (
-          <a
-            key={`${transaction.txHash}-${transaction.kind}`}
-            href={explorerTxUrl(transaction.txHash)}
-            target="_blank"
-            rel="noreferrer"
-            className="font-semibold text-badge hover:underline"
-          >
-            {transactionKindLabel(transaction.kind)} ↗
-          </a>
-        ))}
-      </div>
-
       <VerificationLine verification={placement.verification} />
+
+      <PlacementTimeline placement={placement} />
+
+      <details className="mt-3 border-t border-dashed border-line pt-3 text-[11.5px]">
+        <summary className="cursor-pointer select-none font-semibold text-muted hover:text-ink">
+          Addresses &amp; attestations
+        </summary>
+        <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1.5">
+          <span className={placement.onchain.placementKey ? "font-semibold text-paid" : "text-faint"}>
+            {placement.onchain.placementKey ? "● Rewards reserved in escrow" : "○ Not yet in escrow"}
+          </span>
+          {placement.proofs.installer ? (
+            <span className="text-muted">Installer proof {placement.proofs.installer.toLowerCase()}</span>
+          ) : null}
+          {placement.proofs.verifier ? (
+            <span className="text-muted">Verifier proof {placement.proofs.verifier.toLowerCase()}</span>
+          ) : null}
+          {placement.transactions.map((transaction) => (
+            <a
+              key={`${transaction.txHash}-${transaction.kind}`}
+              href={explorerTxUrl(transaction.txHash)}
+              target="_blank"
+              rel="noreferrer"
+              className="font-semibold text-badge hover:underline"
+            >
+              {transactionKindLabel(transaction.kind)} ↗
+            </a>
+          ))}
+        </div>
+      </details>
 
       {demo && nextStep ? (
         <div className="mt-3 flex flex-wrap gap-2">
@@ -255,7 +361,7 @@ function PlacementRow({
               }
               className="h-8 rounded-lg border border-fail/40 px-3 text-[12px] font-semibold text-fail hover:bg-fail/5 disabled:opacity-50"
             >
-              {demo.busy === `${placement.id}-bad` ? "Working…" : "Stick & verify from the wrong place"}
+              {demo.busy === `${placement.id}-bad` ? "Working…" : "Simulate from the wrong location"}
             </button>
           ) : null}
           {needsCre && !demo.verificationAvailable ? (
