@@ -8,7 +8,8 @@ export type ChainTransactionKindValue =
   | "PLACEMENT_VERIFIED"
   | "PLACEMENT_REJECTED"
   | "CLEANUP_RELEASE"
-  | "CAMPAIGN_REFUND";
+  | "CAMPAIGN_REFUND"
+  | "WORKER_PAYOUT_SWEEP";
 
 export type ChainTransactionDto = {
   id: string;

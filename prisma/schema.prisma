@@ -146,6 +146,7 @@ enum ChainTransactionKind {
   PLACEMENT_REJECTED
   CLEANUP_RELEASE
   CAMPAIGN_REFUND
+  WORKER_PAYOUT_SWEEP
 }
 
 enum ChainTransactionStatus {
@@ -177,7 +178,13 @@ enum VerificationMode {
 model User {
   id                   String               @id @default(cuid())
   privyUserId          String               @unique @map("privy_user_id") @db.VarChar(255)
+  /// Privy-managed wallet that receives job payouts.
   walletAddress        String?              @map("wallet_address") @db.VarChar(64)
+  /// Privy wallet ID for `walletAddress`, needed to sign a sweep transfer out of it.
+  payoutWalletId       String?              @map("payout_wallet_id") @db.VarChar(64)
+  /// External address a worker supplies themselves; the daily sweep sends
+  /// their payout wallet's balance here. Never auto-populated.
+  primaryWalletAddress String?              @map("primary_wallet_address") @db.VarChar(64)
   createdAt            DateTime             @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt            DateTime             @updatedAt @map("updated_at") @db.Timestamptz(3)
   memberships          OrganizationMember[]

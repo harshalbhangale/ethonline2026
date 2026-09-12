@@ -528,7 +528,7 @@ export async function ensurePayoutWallet(userId: string) {
   });
   await prisma.user.updateMany({
     where: { id: userId, walletAddress: null },
-    data: { walletAddress: wallet.address },
+    data: { walletAddress: wallet.address, payoutWalletId: wallet.id },
   });
   return wallet.address;
 }

@@ -11,6 +11,7 @@ export const transactionKindLabels: Record<ChainTransactionKindValue, string> = 
   PLACEMENT_REJECTED: "Proof rejected",
   CLEANUP_RELEASE: "Cleanup paid",
   CAMPAIGN_REFUND: "Refund",
+  WORKER_PAYOUT_SWEEP: "Swept to primary wallet",
 };
 
 export function transactionKindLabel(kind: string) {

@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { usePrivy } from "@privy-io/react-auth";
 
@@ -99,6 +100,18 @@ export default function AccountMenu() {
               View on explorer ↗
             </a>
           )}
+
+          <Link
+            href="/worker/profile"
+            onClick={() => setOpen(false)}
+            className="flex w-full items-center gap-2 border-t border-[var(--line)] px-4 py-3 text-left text-[13px] font-medium text-[var(--ink)] active:bg-[var(--raised)]"
+          >
+            <svg viewBox="0 0 24 24" fill="none" className="h-4 w-4">
+              <circle cx="12" cy="8" r="3.2" stroke="currentColor" strokeWidth="1.6" />
+              <path d="M5 20c1.2-3.6 4.2-5.5 7-5.5s5.8 1.9 7 5.5" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
+            </svg>
+            Profile
+          </Link>
 
           <button
             onClick={() => void logout()}
