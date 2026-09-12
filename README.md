@@ -1,29 +1,130 @@
 # StickerBomb
 
-StickerBomb turns a brand campaign brief into a persistent, measurable physical campaign with independent proof and onchain payouts.
+StickerBomb turns a brand campaign brief into a persistent, measurable physical
+campaign: real posters at real locations, put up and independently checked by
+real people, paid automatically the moment a check is confirmed — all funded
+and settled onchain.
 
-## Current scope
+## The idea, in one picture
 
-The Brand Portal runs end to end on Sepolia:
+```mermaid
+flowchart LR
+    Brand["Brand"] -->|"1. Brief + budget"| Wizard["Campaign wizard"]
+    Wizard -->|"2. Fund"| Escrow["CampaignEscrow<br/>(Sepolia)"]
+    Escrow -->|"3. Reserves reward<br/>per placement"| Poster["Printed poster<br/>+ unique QR"]
+    Poster -->|"4. Installed by"| Installer["Worker: installer"]
+    Installer -->|"5. Independently checked by"| Verifier["Worker: verifier<br/>(never the installer)"]
+    Verifier -->|"6. Confirmed"| Verify["Verification"]
+    Verify -->|"7. Approved"| Escrow
+    Escrow -->|"8. Payout"| Wallets["Installer + verifier<br/>Privy wallets"]
+    Public["Anyone nearby"] -->|"Scans QR"| Analytics["Scan analytics<br/>(engagement only)"]
+```
 
-- Privy sign-in and server-side access-token verification
-- Prisma 7 with Supabase Postgres
-- A five-step campaign wizard in a popup: brief, location, placements, artwork, review
-- An animated Mapbox globe that flies into the chosen city
-- Approved-location inventory with live availability, radius and capacity checks
-- A deterministic, versioned quote engine
-- **An organization treasury**: a Privy server wallet per brand, constrained by a
-  Privy policy, with a second-approver threshold for large fundings
-- **Real funding**: the treasury deposits the quote into `CampaignEscrow` on Sepolia
-- One uniquely coded printable poster per placement, registered in escrow with
-  reserved installer, verifier and cleanup rewards
-- Jobs, placements and an independent-verifier rule (installer ≠ verifier)
-- **Chainlink CRE confidential verification**: a TEE workflow checks both proofs
-  and reports the verdict onchain; the escrow then pays the workers
-- A public QR redirect with privacy-safe, per-asset scan attribution
+A brand never touches a wallet, and a worker never touches a brand's money
+directly — everything in between is a contract rule or a Privy-managed wallet,
+not a person with a private key.
 
-How it fits together, contract addresses, how Privy enables the product and what
-the CRE workflow keeps confidential: **[docs/onchain-brand-flow.md](docs/onchain-brand-flow.md)**.
+## The two people who use it
+
+**A brand** signs in, describes a campaign (what, where, how many posters,
+budget), and funds it from a company treasury. From there they just watch
+progress: which posters are up, which are verified, and where the money went.
+
+**A worker** opens the PWA on their phone, picks a nearby open job, walks over,
+puts the poster up, and photographs it with their GPS location attached. A
+*different* worker then independently confirms it's really there — the same
+person can never install and verify their own poster. The moment that check is
+confirmed, both of them get paid, onchain, automatically.
+
+## Brand flow, step by step
+
+```mermaid
+sequenceDiagram
+    participant B as Brand
+    participant App as StickerBomb
+    participant T as Treasury (Privy wallet)
+    participant E as CampaignEscrow
+
+    B->>App: Sign in (Privy)
+    B->>App: Wizard: brief, location, placements, artwork
+    App->>App: Deterministic quote
+    B->>App: Approve quote
+    App->>T: Ask treasury to fund
+    T->>E: approve + fundCampaign (onchain)
+    App->>E: Register one placement per poster,<br/>reserving install + verify + cleanup rewards
+    App->>B: One printed, uniquely coded poster per placement
+    Note over B,E: From here, progress updates as workers complete jobs
+```
+
+Large fundings can require a **second brand member's approval** before the
+treasury moves money — set on the Treasury page.
+
+## Worker flow, step by step
+
+```mermaid
+sequenceDiagram
+    participant W1 as Worker (installer)
+    participant W2 as Worker (verifier)
+    participant App as StickerBomb
+    participant E as CampaignEscrow
+    participant Wallets as Payout wallets
+
+    W1->>App: Accept an open job (sees only an approximate area)
+    W1->>App: Put poster up, upload photo + GPS fix
+    App->>App: Fingerprint the photo (sha256)
+    App-->>W2: Job opens for an independent check<br/>(never the installer)
+    W2->>App: Confirm with own photo + GPS,<br/>or report it missing
+    alt Confirmed
+        App->>E: Record both payout wallets, request verification
+        E->>E: Verify proofs, approve
+        E->>Wallets: Pay installer + verifier
+    else Missing
+        App->>W1: Send back to recapture the proof
+    end
+```
+
+The installer never sees who checks their work, and a worker can never accept
+the check for a poster they installed themselves — that separation is enforced
+by the app and by the escrow contract, not just by convention.
+
+## What each piece is for
+
+| Layer | What it does | Why it exists |
+| --- | --- | --- |
+| **Privy** | Sign-in, and a server-side wallet per brand ("the treasury") that only StickerBomb's server can drive, under a policy that restricts it to funding campaigns | So a brand doesn't need a crypto wallet, and no employee ever holds a key that could move the treasury's funds elsewhere |
+| **CampaignEscrow (Sepolia)** | Holds a campaign's budget, reserves per-placement rewards, and pays workers only on an approved verification | So the money rules (who can fund, who can get paid, that installer ≠ verifier) are guaranteed by a contract, not just app logic |
+| **Verification** | Independently checks that a poster's proof is genuine — right location, right QR, a fresh photo, installer and verifier really are two different people — before approving payout | So payment reflects real, independently-confirmed work rather than a self-reported "done" |
+| **Worker PWA (`/worker`)** | An installable phone app for accepting jobs, uploading proof photos with GPS, and running independent checks | Installing and checking posters happens in the field, from a phone, not a desk |
+| **Scan analytics** | Counts and de-duplicates QR scans from the public, without ever storing who scanned | Engagement data for the brand — it never proves installation and never triggers a payout |
+
+Full contract addresses and the lower-level design of the escrow and the
+verification workflow: **[docs/onchain-brand-flow.md](docs/onchain-brand-flow.md)**.
+
+## Tech stack
+
+| Area | What's used |
+| --- | --- |
+| App | Next.js 15 (App Router), React, TypeScript |
+| Database | Prisma 7 ORM over Supabase Postgres |
+| Auth & wallets | Privy — sign-in, and a server wallet per brand (the treasury) |
+| Onchain | Foundry-built Solidity contracts (`CampaignEscrow`), deployed to Sepolia, read/written with `viem` |
+| Maps | Mapbox (the wizard's animated globe, worker job locations) |
+| Media | Supabase Storage (private `proofs` bucket for install/verify photos, uploaded via signed URLs) |
+| Poster/QR generation | In-house renderer, including a halftone style that maps a brand's artwork onto the QR's modules |
+| Verification | A deterministic rules workflow — geofence, QR match, freshness, distinct installer/verifier, no reused media — that produces the onchain payout verdict |
+| Hosting | Vercel |
+
+## Project layout
+
+```
+src/app/               Next.js routes: brand pages, worker PWA, public QR redirect, API routes
+src/components/        UI: campaign wizard, poster studio, worker PWA screens, treasury pages
+src/lib/                Server logic: treasury, funding, jobs, verification, quotes, chain access
+contracts/              Foundry project — CampaignEscrow.sol and its tests
+cre/placement-verifier/  The verification workflow and its deterministic checks
+prisma/                 Schema and migrations
+docs/                   Deeper design notes (onchain flow, contract addresses)
+```
 
 ### Worker PWA (`/worker`)
 
@@ -39,8 +140,8 @@ people who put posters up and check them:
 - **Check**: the checker confirms with their own photo and location, or reports
   the poster missing, which sends the installer back to recapture.
 - **Settlement**: a confirmed check records both Privy payout wallets in escrow
-  and starts the Chainlink CRE confidential verification; the escrow then pays
-  both workers. **Wallet** shows earnings and the onchain payout.
+  and triggers verification; the escrow then pays both workers. **Wallet**
+  shows earnings and the onchain payout.
 
 It runs on the same placements, jobs and evidence as the Brand Portal
 (`src/lib/jobs/worker-view.ts`). Development-only **demo controls**
@@ -150,8 +251,8 @@ response for now.
 | `/api/treasury/settings` | Second-approver threshold |
 | `/api/funding-requests/[id]/approve` | A second member approves and the treasury funds |
 | `/api/jobs/nearby`, `/api/jobs/[id]/accept`, `/api/jobs/[id]/start` | Worker job APIs |
-| `/api/cre/placements/[id]/evidence` | Exact evidence for the CRE enclave only (secret-authenticated) |
-| `/api/cre/placements/[id]/verdict` | Verdict callback from the CRE workflow |
+| `/api/cre/placements/[id]/evidence` | Exact evidence for verification only (secret-authenticated) |
+| `/api/cre/placements/[id]/verdict` | Verdict callback that settles a placement |
 | `/api/campaigns/[id]/assets` | List generated assets |
 | `/api/campaigns/[id]/assets/generate` | Generate one coded poster per placement |
 | `/api/campaigns/[id]/assets/[code]/image` | Render a printable poster |
@@ -172,8 +273,8 @@ npm run db:seed
 npm run db:deploy
 npm run db:studio
 npm run contracts:test   # Foundry tests for CampaignEscrow
-npm run cre:test         # Bun tests for the confidential checks
-npm run e2e:sepolia      # full treasury → escrow → CRE → payout run on Sepolia
+npm run cre:test         # Bun tests for the verification checks
+npm run e2e:sepolia      # full treasury → escrow → verification → payout run on Sepolia
 npm run e2e:worker       # Worker PWA flow: photo proof, independent check, payout
 ```
 
