@@ -19,16 +19,13 @@ export const metadata: Metadata = {
     title: "StickerBomb",
   },
   icons: {
-    icon: [
-      { url: "/favicon.png", sizes: "32x32", type: "image/png" },
-      { url: "/icon-192.png", sizes: "192x192", type: "image/png" },
-    ],
-    apple: { url: "/apple-icon.png", sizes: "180x180", type: "image/png" },
+    icon: { url: "/favicon.png?v=3", type: "image/png" },
+    apple: { url: "/apple-touch-icon.png?v=2", sizes: "180x180", type: "image/png" },
   },
 };
 
 export const viewport: Viewport = {
-  themeColor: "#050505",
+  themeColor: "#000000",
   width: "device-width",
   initialScale: 1,
   maximumScale: 1,

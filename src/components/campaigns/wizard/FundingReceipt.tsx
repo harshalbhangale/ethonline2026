@@ -82,7 +82,7 @@ export default function FundingReceipt({
         <ReceiptPrinter.Root stage={stage} aria-label="Funding receipt">
           <ReceiptPrinter.Machine>
             <ReceiptPrinter.Header>
-              <Image src="/logo_remove.png" alt="" width={28} height={28} className="size-7 object-contain" />
+              <Image src="/logo_remove.png" alt="" width={120} height={72} className="h-6 w-auto object-contain" />
               <span className="pt-1 font-mono text-[10.5px] uppercase tracking-[0.14em] text-faint">
                 Escrow · Sepolia
               </span>
@@ -189,7 +189,7 @@ export default function FundingReceipt({
               animate={{ opacity: 1, y: 0 }}
               transition={{ type: "spring", stiffness: 300, damping: 26, delay: 0.1 }}
               whileTap={{ scale: 0.97 }}
-              className="-mt-6 flex h-11 items-center gap-2 rounded-xl bg-solid px-5 text-[14px] font-semibold text-solid-ink shadow-xl"
+              className="mt-6 flex h-11 items-center gap-2 rounded-xl bg-solid px-5 text-[14px] font-semibold text-solid-ink shadow-xl"
             >
               View campaign
               <ArrowRightIcon aria-hidden size={15} weight="bold" />

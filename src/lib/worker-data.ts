@@ -67,6 +67,17 @@ export function formatDate(value: string | null) {
   }).format(new Date(value));
 }
 
-export function mapsUrl(job: Job) {
-  return `https://www.google.com/maps/search/?api=1&query=${job.latitude},${job.longitude}`;
+/**
+ * What this worker is paid for this job.
+ *
+ * A self-verified poster pays the placing and the verifying fee to one person,
+ * so the installer's side carries both. Kept here because the job list, the
+ * task list and the job page must never disagree about the number.
+ */
+export function feeForWorker(job: Job, asChecker: boolean) {
+  if (asChecker) return job.verifierFeeMinor;
+
+  return job.verificationMode === "SELF"
+    ? String(BigInt(job.installerFeeMinor) + BigInt(job.verifierFeeMinor))
+    : job.installerFeeMinor;
 }
