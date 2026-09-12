@@ -259,7 +259,7 @@ function PlacementRow({
             </button>
           ) : null}
           {needsCre && !demo.verificationAvailable ? (
-            <span className="self-center text-[11.5px] text-faint">Verification isn't available on this server.</span>
+            <span className="self-center text-[11.5px] text-faint">Verification is not available on this server.</span>
           ) : null}
         </div>
       ) : null}
