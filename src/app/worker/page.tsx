@@ -87,7 +87,7 @@ function SectionLabel({ children, count }: { children: string; count: number }) 
 }
 
 export default function WorkerJobs() {
-  const { placeJobs, checkJobs, ready, loading, error, refresh } = useWorker();
+  const { placeJobs, checkJobs, ready, loading, error, errorCode, refresh } = useWorker();
   const total = placeJobs.length + checkJobs.length;
   const busy = !ready || loading;
 
@@ -131,12 +131,22 @@ export default function WorkerJobs() {
       {error && (
         <div className="mt-4 rounded-xl border border-[var(--line)] bg-[var(--surface)] px-4 py-3 text-[13px] text-[var(--bad)]">
           <p>{error}</p>
-          <button
-            onClick={() => void refresh()}
-            className="mt-2 font-semibold text-[var(--amber)]"
-          >
-            Try again
-          </button>
+          {/* Retrying cannot clear the identity gate; send them where it is fixed. */}
+          {errorCode === "SELFIE_CHECK_REQUIRED" ? (
+            <Link
+              href="/worker/profile"
+              className="mt-2 inline-block font-semibold text-[var(--amber)]"
+            >
+              Verify with World ID
+            </Link>
+          ) : (
+            <button
+              onClick={() => void refresh()}
+              className="mt-2 font-semibold text-[var(--amber)]"
+            >
+              Try again
+            </button>
+          )}
         </div>
       )}
 

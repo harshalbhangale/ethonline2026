@@ -5,7 +5,7 @@
  * cached shell as the fallback when the signal drops mid-shift. API calls are
  * never cached: a stale job or balance is worse than an honest error.
  */
-const SHELL = "sb-shell-v1";
+const SHELL = "sb-shell-v2";
 const SHELL_URLS = ["/worker", "/worker/tasks", "/worker/wallet", "/offline"];
 
 self.addEventListener("install", (event) => {
@@ -33,6 +33,9 @@ self.addEventListener("fetch", (event) => {
   const url = new URL(request.url);
   if (url.origin !== self.location.origin) return;
   if (url.pathname.startsWith("/api/")) return;
+  // Build output is content-hashed and versioned with the deploy; caching it
+  // here only risks pairing a stale bundle with freshly rendered HTML.
+  if (url.pathname.startsWith("/_next/")) return;
 
   if (request.mode === "navigate") {
     event.respondWith(

@@ -1,4 +1,7 @@
-import { requireWorkerContext } from "@/lib/auth/require-worker";
+import {
+  requireUnverifiedWorkerContext,
+  requireWorkerContext,
+} from "@/lib/auth/require-worker";
 import { apiErrorResponse } from "@/lib/http/api-error";
 import { getWorkerProfileSettings, setPrimaryWallet } from "@/lib/worker/profile";
 
@@ -7,7 +10,7 @@ export const dynamic = "force-dynamic";
 
 export async function GET(request: Request) {
   try {
-    const context = await requireWorkerContext(request);
+    const context = await requireUnverifiedWorkerContext(request);
     return Response.json(await getWorkerProfileSettings(context));
   } catch (error) {
     return apiErrorResponse(error);
