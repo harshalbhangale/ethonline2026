@@ -571,6 +571,23 @@ const seedCities: SeedCity[] = [
       },
     ],
   },
+  {
+    city: "Jalgaon",
+    countryCode: "IN",
+    countryName: "India",
+    locations: [
+      {
+        slug: "jal-mj-college-noticeboard",
+        venueName: "MJ College campus noticeboard",
+        district: "MJ College",
+        latitude: 21.0077,
+        longitude: 75.5626,
+        placementInstructions:
+          "Outer public noticeboard beside the college gate. Do not enter the campus itself.",
+        maxActiveCampaigns: 2,
+      },
+    ],
+  },
 ];
 
 async function main() {

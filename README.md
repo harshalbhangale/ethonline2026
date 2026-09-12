@@ -205,13 +205,17 @@ response for now.
 
    When `DATABASE_URL` points to the Supabase transaction pooler on port `6543`, the Prisma CLI automatically uses its session-pooler equivalent on port `5432`. You can instead provide an explicit `DIRECT_URL`.
 
-   The seed creates 21 permissioned demo surfaces and is safe to re-run:
+   The seed creates permissioned demo surfaces across eight cities and is safe to re-run:
 
    | City | Surfaces | Districts |
    | --- | --- | --- |
    | New York | 6 | Financial District, Tribeca, Battery Park, Civic Center |
    | Pune | 7 | Koregaon Park, Kalyani Nagar, Viman Nagar, Shivaji Nagar, Baner, Hinjewadi |
-   | Cape Town | 8 | City Bowl, Woodstock, Salt River, Observatory, Green Point, Sea Point, V&A Waterfront |
+   | Cape Town | 12 | City Bowl, Woodstock, Salt River, Observatory, Green Point, Sea Point, V&A Waterfront, Gardens, Camps Bay, Claremont |
+   | New Delhi | 8 | Connaught Place, Khan Market, Hauz Khas, Saket, Lajpat Nagar, Nehru Place, Rajouri Garden, Chandni Chowk |
+   | Bengaluru | 9 | HSR Layout, Koramangala, Indiranagar, BTM Layout |
+   | Mumbai | 8 | Bandra West, Lower Parel, Colaba, Powai, Andheri West, Bandra Kurla Complex, Kala Ghoda |
+   | Jalgaon | 1 | MJ College |
 
    Surfaces are spread across districts on purpose, so targeting several areas in
    one city reaches more inventory than widening a single radius.
