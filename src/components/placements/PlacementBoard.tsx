@@ -66,6 +66,55 @@ function PlacementProgress({ status }: { status: PlacementStatusValue }) {
   );
 }
 
+type RoadmapStage = { key: string; label: string; count: number; done: boolean };
+
+/**
+ * Campaign-wide lifecycle tracker. Placement-level dot progress (below) shows
+ * one poster's journey; this shows where the whole campaign's posters stand
+ * at a glance, which is what a brand actually wants to know first.
+ */
+function CampaignRoadmap({ placements }: { placements: PlacementDto[] }) {
+  const bucket = (statuses: PlacementStatusValue[]) =>
+    placements.filter((placement) => statuses.includes(placement.status)).length;
+
+  const awaitingInstall = bucket(["AWAITING_INSTALL"]);
+  const installing = bucket(["INSTALLING", "INSTALL_SUBMITTED", "NEEDS_RECAPTURE"]);
+  const verifying = bucket(["AWAITING_VERIFIER", "VERIFYING", "READY_FOR_FINAL_VERIFICATION"]);
+  const verified = bucket(["VERIFIED", "REMOVING", "REMOVED"]);
+
+  const stages: RoadmapStage[] = [
+    { key: "live", label: "Posters live", count: placements.length, done: placements.length > 0 },
+    { key: "installing", label: "Being installed", count: installing, done: installing + verifying + verified > 0 },
+    { key: "verifying", label: "Independent check", count: verifying, done: verifying + verified > 0 },
+    { key: "verified", label: "Verified & paid", count: verified, done: verified > 0 },
+  ];
+
+  return (
+    <Card className="px-5 py-5 sm:px-6">
+      <p className="text-[11px] font-bold uppercase tracking-[0.09em] text-faint">Campaign roadmap</p>
+      <ol className="mt-3 grid grid-cols-4 gap-2">
+        {stages.map((stage, index) => (
+          <li key={stage.key} className="flex flex-col items-center text-center">
+            <div className="flex w-full items-center">
+              <span
+                className={`h-2 flex-1 rounded-full ${index === 0 || stages[index - 1].done ? (stage.done ? "bg-paid" : "bg-badge/60") : "bg-line"}`}
+              />
+            </div>
+            <p className="mt-2 text-[19px] font-extrabold tracking-[-0.03em]">{stage.count}</p>
+            <p className="text-[11.5px] font-semibold text-muted">{stage.label}</p>
+          </li>
+        ))}
+      </ol>
+      <p className="mt-3 text-[12px] text-muted">
+        {awaitingInstall > 0
+          ? `${awaitingInstall} poster${awaitingInstall === 1 ? "" : "s"} still waiting for a worker to accept the job. `
+          : ""}
+        Every open job is visible to all workers as soon as it appears here.
+      </p>
+    </Card>
+  );
+}
+
 function VerificationLine({ verification }: { verification: VerificationRunDto | null }) {
   if (!verification) return null;
 
@@ -73,7 +122,7 @@ function VerificationLine({ verification }: { verification: VerificationRunDto |
     return (
       <p className="mt-2 flex items-center gap-2 text-[12px] font-semibold text-badge">
         <span className="h-2 w-2 animate-pulse rounded-full bg-badge" />
-        Chainlink CRE is checking both proofs inside a secure enclave…
+        Verifying both proofs…
       </p>
     );
   }
@@ -81,7 +130,7 @@ function VerificationLine({ verification }: { verification: VerificationRunDto |
   if (verification.approved === true) {
     return (
       <p className="mt-2 text-[12px] font-semibold text-paid">
-        Confidential check passed; escrow paid both workers.
+        Verification passed; escrow paid both workers.
         {verification.txHash ? (
           <a href={explorerTxUrl(verification.txHash)} target="_blank" rel="noreferrer" className="ml-2 underline">
             Report tx ↗
@@ -95,7 +144,7 @@ function VerificationLine({ verification }: { verification: VerificationRunDto |
     return (
       <div className="mt-2 text-[12px] text-fail">
         <p className="font-semibold">
-          Confidential check rejected the proof. Payment stays locked in escrow.
+          Verification rejected the proof. Payment stays locked in escrow.
           {verification.txHash ? (
             <a href={explorerTxUrl(verification.txHash)} target="_blank" rel="noreferrer" className="ml-2 underline">
               Report tx ↗
@@ -210,7 +259,7 @@ function PlacementRow({
             </button>
           ) : null}
           {needsCre && !demo.verificationAvailable ? (
-            <span className="self-center text-[11.5px] text-faint">The Chainlink CRE CLI is not available on this server.</span>
+            <span className="self-center text-[11.5px] text-faint">Verification isn't available on this server.</span>
           ) : null}
         </div>
       ) : null}
@@ -247,6 +296,7 @@ export default function PlacementBoard({
   });
   const [demoBusy, setDemoBusy] = useState<string | null>(null);
   const [notice, setNotice] = useState<Notice>(null);
+  const [retrying, setRetrying] = useState(false);
 
   const cancelRequest = useCallback(() => {
     ++requestSequence.current;
@@ -351,6 +401,25 @@ export default function PlacementBoard({
     [campaignId, getAccessToken, loadPlacements, requestScope],
   );
 
+  const retryAssetGeneration = useCallback(async () => {
+    if (!campaignId) return;
+    setRetrying(true);
+    setNotice(null);
+    try {
+      await authenticatedFetch(getAccessToken, `/api/campaigns/${campaignId}/assets/generate`, {
+        method: "POST",
+      });
+      await loadPlacements();
+    } catch (caught) {
+      setNotice({
+        tone: "fail",
+        text: caught instanceof Error ? caught.message : "Could not open jobs for workers.",
+      });
+    } finally {
+      setRetrying(false);
+    }
+  }, [campaignId, getAccessToken, loadPlacements]);
+
   if (!ready || (loading && !data)) {
     return <div className="h-48 animate-pulse rounded-[20px] bg-raised" />;
   }
@@ -415,9 +484,22 @@ export default function PlacementBoard({
           <h2 className="text-[16px] font-bold">Placements</h2>
           <p className="mt-2 max-w-[60ch] text-[13.5px] leading-relaxed text-muted">
             {funded
-              ? "Installation jobs open for each approved location as soon as this campaign's QR assets are generated."
-              : "Placements open once the campaign is funded and one QR asset is generated for each approved location."}
+              ? "Posters are still being generated for this campaign's locations. This is normally instant — if it's been more than a minute, try opening jobs again below."
+              : "Placements open the moment the campaign is funded: posters are generated and every job is immediately visible to all workers."}
           </p>
+          {funded && campaignId ? (
+            <button
+              type="button"
+              disabled={retrying}
+              onClick={() => void retryAssetGeneration()}
+              className="mt-4 h-9 rounded-lg border border-line px-3.5 text-[12.5px] font-semibold hover:bg-raised disabled:opacity-50"
+            >
+              {retrying ? "Opening jobs…" : "Open jobs for workers"}
+            </button>
+          ) : null}
+          {notice ? (
+            <p className={`mt-3 text-[12.5px] ${notice.tone === "ok" ? "text-paid" : "text-fail"}`}>{notice.text}</p>
+          ) : null}
         </div>
       </Card>
     );
@@ -427,6 +509,7 @@ export default function PlacementBoard({
 
   return (
     <div className="space-y-4">
+      <CampaignRoadmap placements={data.placements} />
       <div className="grid gap-4 sm:grid-cols-4">
         {[
           ["Placements", summary.total],
