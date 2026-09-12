@@ -22,7 +22,8 @@ flowchart LR
 | Contract | Address |
 | --- | --- |
 | `MockUSDC` (tUSDC, 6 decimals, open mint for the demo) | [`0xa76BAd9b75814553A75BD3Db189C47fb9030549A`](https://sepolia.etherscan.io/address/0xa76BAd9b75814553A75BD3Db189C47fb9030549A) |
-| `CampaignEscrow` v2 (tUSDC, default) | [`0x1347FB54eFC0E6702637830A90974419f904b700`](https://sepolia.etherscan.io/address/0x1347FB54eFC0E6702637830A90974419f904b700) |
+| `CampaignEscrow` v3 (tUSDC, default) | [`0x715892FdA434D1eB06acf9d4daD9ABB052faB2Fa`](https://sepolia.etherscan.io/address/0x715892FdA434D1eB06acf9d4daD9ABB052faB2Fa) |
+| `CampaignEscrow` v2 (superseded, existing campaigns only) | [`0x1347FB54eFC0E6702637830A90974419f904b700`](https://sepolia.etherscan.io/address/0x1347FB54eFC0E6702637830A90974419f904b700) |
 | `CampaignEscrow` v1 (superseded, existing campaigns only) | [`0xF422ddFE8153d625B0724d5116eb73C75EF918d0`](https://sepolia.etherscan.io/address/0xF422ddFE8153d625B0724d5116eb73C75EF918d0) |
 | `CampaignEscrow` bound to Circle Sepolia USDC | [`0xD173f09A11d102E748D258e61310A3D9F2944096`](https://sepolia.etherscan.io/address/0xD173f09A11d102E748D258e61310A3D9F2944096) |
 | Chainlink CRE Sepolia forwarder (trusted reporter) | `0x15fC6ae953E024d975e77382eEeC56A9101f9F88` |

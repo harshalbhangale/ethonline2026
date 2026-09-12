@@ -26,6 +26,7 @@ import { assignPlacementWorkers } from "@/lib/onchain/placements";
 import { createProofViewUrl, hashProofObject } from "@/lib/storage/proofs";
 import { GEOFENCE_RADIUS_METERS } from "@/lib/verification/evidence-api";
 import { minDwellSeconds, precheckRadiusMetres } from "@/lib/verification/leniency";
+import { isMockVerificationEnabled, runMockVerification } from "@/lib/verification/mock-verify";
 import { isCreRunnerAvailable, startVerificationRun } from "@/lib/verification/runner";
 
 /** Time a self-verifying worker must be seen on site before the photo. */
@@ -486,7 +487,11 @@ async function startSettlement(placementId: string, appUrl: string) {
       if (userId) await ensurePayoutWallet(userId);
     }
     await assignPlacementWorkers(placementId);
-    if (isCreRunnerAvailable()) await startVerificationRun(placementId, appUrl);
+    if (isMockVerificationEnabled()) {
+      await runMockVerification(placementId);
+    } else if (isCreRunnerAvailable()) {
+      await startVerificationRun(placementId, appUrl);
+    }
   } catch (error) {
     console.error("Could not start settlement", error);
   }

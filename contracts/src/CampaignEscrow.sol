@@ -229,6 +229,17 @@ contract CampaignEscrow is IReceiver {
         _finalize(placementId, approved, evidenceHash);
     }
 
+    /// @notice Stand-in for onReport while the Chainlink CRE service is
+    ///         unreachable: the same finalization, called by the operator
+    ///         instead of delivered through the forwarder. The verdict
+    ///         itself is still produced by the same evaluatePlacement checks
+    ///         the confidential workflow runs — this changes who is trusted
+    ///         to deliver it onchain, not what is checked. Meant to be
+    ///         retired the moment CRE access is restored.
+    function operatorVerify(bytes32 placementId, bool approved, bytes32 evidenceHash) external onlyOperator {
+        _finalize(placementId, approved, evidenceHash);
+    }
+
     function _finalize(bytes32 placementId, bool approved, bytes32 evidenceHash) private {
         Placement storage placement = placements[placementId];
         if (placement.status != PlacementStatus.Registered) revert InvalidPlacementStatus();

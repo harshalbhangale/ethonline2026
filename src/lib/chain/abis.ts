@@ -187,6 +187,29 @@ export const campaignEscrowAbi = [
   },
   {
     "type": "function",
+    "name": "operatorVerify",
+    "inputs": [
+      {
+        "name": "placementId",
+        "type": "bytes32",
+        "internalType": "bytes32"
+      },
+      {
+        "name": "approved",
+        "type": "bool",
+        "internalType": "bool"
+      },
+      {
+        "name": "evidenceHash",
+        "type": "bytes32",
+        "internalType": "bytes32"
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
     "name": "owner",
     "inputs": [],
     "outputs": [
@@ -669,11 +692,6 @@ export const campaignEscrowAbi = [
   {
     "type": "error",
     "name": "PlacementExists",
-    "inputs": []
-  },
-  {
-    "type": "error",
-    "name": "SelfVerification",
     "inputs": []
   },
   {

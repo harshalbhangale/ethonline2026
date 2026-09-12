@@ -9,10 +9,10 @@
       "block": 11677029
     },
     "CampaignEscrow": {
-      "address": "0x1347FB54eFC0E6702637830A90974419f904b700",
-      "txHash": "0x4437868e27724df8b3b28cb85e09af2423d47027fd844c5c12b0d62a7e2a9841",
-      "block": 11681482,
-      "note": "v2: allows self-verification (one worker receives both rewards)."
+      "address": "0x715892FdA434D1eB06acf9d4daD9ABB052faB2Fa",
+      "txHash": "0x0753ef875a35a990d643f1c766579473ed9531d6602958ed5d288cf91ed67460",
+      "block": 11683376,
+      "note": "v3: adds operatorVerify(), an owner/operator-only escape hatch that finalizes a placement exactly like onReport, for use only while the Chainlink CRE service is unavailable."
     },
     "CampaignEscrowCircleUSDC": {
       "address": "0xD173f09A11d102E748D258e61310A3D9F2944096",
@@ -25,13 +25,19 @@
       "txHash": "0xdbcd1f557d8525ab58f38396ef3c7d88f4931333c9cc6b0094844ab02bbdb192",
       "block": 11677030,
       "note": "Superseded: reverted when installer == verifier. Campaigns funded here still settle here."
+    },
+    "CampaignEscrowV2": {
+      "address": "0x1347FB54eFC0E6702637830A90974419f904b700",
+      "txHash": "0x4437868e27724df8b3b28cb85e09af2423d47027fd844c5c12b0d62a7e2a9841",
+      "block": 11681482,
+      "note": "Superseded: settlement requires a live Chainlink CRE forwarder report. Campaigns funded here still settle here."
     }
   },
   "operator": "0xa9fa32f947bEcDf344490e195f710B814307f823",
   "creForwarder": "0x15fC6ae953E024d975e77382eEeC56A9101f9F88",
   "default": {
     "token": "0xa76bad9b75814553a75bd3db189c47fb9030549a",
-    "escrow": "0x1347fb54efc0e6702637830a90974419f904b700"
+    "escrow": "0x715892fda434d1eb06acf9d4dad9abb052fab2fa"
   },
   "verification": "Sourcify exact match"
 }

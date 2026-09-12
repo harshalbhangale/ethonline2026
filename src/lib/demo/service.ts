@@ -23,6 +23,7 @@ import {
   openInstallationJobs,
 } from "@/lib/placements/service";
 import type { PlacementListResponse } from "@/lib/placements/types";
+import { isMockVerificationEnabled, runMockVerification } from "@/lib/verification/mock-verify";
 import { startVerificationRun } from "@/lib/verification/runner";
 
 /**
@@ -122,7 +123,11 @@ async function settle(placementId: string, workerUserIds: string[], appUrl: stri
   if (!isOnchainConfigured()) return;
   for (const userId of workerUserIds) await ensurePayoutWallet(userId);
   await assignPlacementWorkers(placementId);
-  await startVerificationRun(placementId, appUrl);
+  if (isMockVerificationEnabled()) {
+    await runMockVerification(placementId);
+  } else {
+    await startVerificationRun(placementId, appUrl);
+  }
 }
 
 /**

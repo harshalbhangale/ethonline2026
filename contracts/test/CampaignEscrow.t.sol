@@ -115,6 +115,44 @@ contract CampaignEscrowTest is Test {
         assertEq(usdc.balanceOf(installer), 0);
     }
 
+    function test_operatorVerifyPaysWorkersLikeAReport() public {
+        vm.prank(brand);
+        escrow.fundCampaign(CAMPAIGN, 60e6);
+        vm.startPrank(operator);
+        escrow.registerPlacement(PLACEMENT, CAMPAIGN, INSTALL, VERIFY, CLEANUP);
+        escrow.assignWorkers(PLACEMENT, installer, installer);
+        escrow.operatorVerify(PLACEMENT, true, EVIDENCE);
+        vm.stopPrank();
+
+        assertEq(usdc.balanceOf(installer), INSTALL + VERIFY);
+        assertEq(escrow.heldBalance(CAMPAIGN), 60e6 - INSTALL - VERIFY);
+    }
+
+    function test_operatorVerifyRejectionLeavesRewardsLocked() public {
+        vm.prank(brand);
+        escrow.fundCampaign(CAMPAIGN, 60e6);
+        vm.startPrank(operator);
+        escrow.registerPlacement(PLACEMENT, CAMPAIGN, INSTALL, VERIFY, CLEANUP);
+        escrow.assignWorkers(PLACEMENT, installer, installer);
+        escrow.operatorVerify(PLACEMENT, false, EVIDENCE);
+        vm.stopPrank();
+
+        assertEq(usdc.balanceOf(installer), 0);
+    }
+
+    function test_onlyOperatorCallsOperatorVerify() public {
+        vm.prank(brand);
+        escrow.fundCampaign(CAMPAIGN, 60e6);
+        vm.startPrank(operator);
+        escrow.registerPlacement(PLACEMENT, CAMPAIGN, INSTALL, VERIFY, CLEANUP);
+        escrow.assignWorkers(PLACEMENT, installer, installer);
+        vm.stopPrank();
+
+        vm.prank(forwarder);
+        vm.expectRevert(CampaignEscrow.NotOperator.selector);
+        escrow.operatorVerify(PLACEMENT, true, EVIDENCE);
+    }
+
     function test_onlyForwarderDeliversReports() public {
         _fundAndRegister();
         vm.prank(operator);
