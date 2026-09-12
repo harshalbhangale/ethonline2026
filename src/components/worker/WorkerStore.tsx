@@ -26,6 +26,8 @@ type Store = {
   ready: boolean;
   loading: boolean;
   error: string | null;
+  /** API error code, so callers can offer the right recovery action. */
+  errorCode: string | null;
   placeJobs: Job[];
   checkJobs: Job[];
   myTasks: Job[];
@@ -64,6 +66,10 @@ function errorMessage(error: unknown) {
     : "Could not load your worker data. Please try again.";
 }
 
+function errorCodeOf(error: unknown) {
+  return error instanceof ClientApiError ? (error.code ?? null) : null;
+}
+
 function mergeJobs(...groups: Job[][]) {
   const byId = new Map<string, Job>();
 
@@ -79,6 +85,7 @@ export function WorkerProvider({ children }: { children: ReactNode }) {
   const [ready, setReady] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [errorCode, setErrorCode] = useState<string | null>(null);
   const [placeJobs, setPlaceJobs] = useState<Job[]>([]);
   const [checkJobs, setCheckJobs] = useState<Job[]>([]);
   const [myTasks, setMyTasks] = useState<Job[]>([]);
@@ -125,6 +132,7 @@ export function WorkerProvider({ children }: { children: ReactNode }) {
       setJobs(mergeJobs(lists.place, lists.check, lists.mine));
     } catch (caught) {
       setError(errorMessage(caught));
+      setErrorCode(errorCodeOf(caught));
     } finally {
       setLoading(false);
       setReady(true);
@@ -253,6 +261,7 @@ export function WorkerProvider({ children }: { children: ReactNode }) {
       ready,
       loading,
       error,
+      errorCode,
       placeJobs,
       checkJobs,
       myTasks,
@@ -271,6 +280,7 @@ export function WorkerProvider({ children }: { children: ReactNode }) {
       ready,
       loading,
       error,
+      errorCode,
       placeJobs,
       checkJobs,
       myTasks,

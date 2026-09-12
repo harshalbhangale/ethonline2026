@@ -6,6 +6,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import banner from "@/assets/banner.jpg";
+import LandingPage from "@/components/landing/LandingPage";
 import {
   authenticatedFetch,
   ClientApiError,
@@ -181,6 +182,19 @@ export default function EntryRouter() {
         ? "signed-out"
         : "loading";
 
+  // Visitors who are not signed in get the marketing page. Privy's `ready`
+  // flag flips a moment after mount, so the landing page also covers that gap
+  // rather than flashing a spinner at a first-time visitor.
+  if (!ready || currentStatus === "signed-out") {
+    return (
+      <LandingPage
+        onSignIn={login}
+        signInLabel={ready ? "Start a campaign" : "Loading…"}
+        signInDisabled={!ready}
+      />
+    );
+  }
+
   return (
     <main className="grid min-h-screen lg:grid-cols-2">
       <div className="flex items-center justify-center px-5 py-12 sm:px-10">
@@ -208,9 +222,7 @@ export default function EntryRouter() {
           ) : null}
 
           <div className="mt-8 flex flex-wrap justify-center gap-3">
-            {currentStatus === "signed-out" ? (
-              <button onClick={login} className="h-11 rounded-xl bg-solid px-5 text-[14px] font-semibold text-solid-ink transition-opacity hover:opacity-90">Sign in to the Brand Portal</button>
-            ) : currentStatus === "needs-onboarding" ? (
+            {currentStatus === "needs-onboarding" ? (
               <button onClick={() => void createBrandWorkspace()} className="h-11 rounded-xl bg-solid px-5 text-[14px] font-semibold text-solid-ink transition-opacity hover:opacity-90">Create brand workspace</button>
             ) : currentStatus === "error" && userId ? (
               <button onClick={() => void resolveMembership(userId)} className="h-11 rounded-xl bg-solid px-5 text-[14px] font-semibold text-solid-ink transition-opacity hover:opacity-90">Try again</button>

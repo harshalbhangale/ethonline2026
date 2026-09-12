@@ -5,6 +5,20 @@ import { useWorker } from "@/components/worker/WorkerStore";
 import JobCardSkeleton from "@/components/worker/Skeleton";
 import { feeForWorker, formatDate, formatMoney, type Job } from "@/lib/worker-data";
 
+function WorldMark() {
+  return (
+    <svg viewBox="0 0 16 16" fill="none" className="h-3.5 w-3.5">
+      <circle cx="8" cy="8" r="6.3" stroke="currentColor" strokeWidth="1.5" />
+      <path d="M1.7 8h12.6" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+      <path
+        d="M8 1.7c1.7 1.8 2.6 4 2.6 6.3S9.7 12.5 8 14.3C6.3 12.5 5.4 10.3 5.4 8S6.3 3.5 8 1.7Z"
+        stroke="currentColor"
+        strokeWidth="1.5"
+      />
+    </svg>
+  );
+}
+
 function JobCard({ job, kind }: { job: Job; kind: "place" | "check" }) {
   const fee = feeForWorker(job, kind === "check");
   const mine = kind === "place" && job.isInstaller;
@@ -87,7 +101,7 @@ function SectionLabel({ children, count }: { children: string; count: number }) 
 }
 
 export default function WorkerJobs() {
-  const { placeJobs, checkJobs, ready, loading, error, refresh } = useWorker();
+  const { placeJobs, checkJobs, ready, loading, error, errorCode, refresh } = useWorker();
   const total = placeJobs.length + checkJobs.length;
   const busy = !ready || loading;
 
@@ -128,7 +142,52 @@ export default function WorkerJobs() {
         </button>
       </div>
 
-      {error && (
+      {/* The identity gate is a setup step, not a failure, so it gets its own
+          card instead of the red error slot. */}
+      {error && errorCode === "SELFIE_CHECK_REQUIRED" ? (
+        <div className="mt-4 rounded-2xl border border-[var(--amber-line)] bg-[var(--amber-soft)] p-4">
+          <div className="flex items-start gap-3">
+            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[var(--amber)] text-[var(--solid-ink)]">
+              <WorldMark />
+            </div>
+            <div className="min-w-0 flex-1">
+              <h2 className="text-[15px] font-bold tracking-[-0.01em]">
+                One quick check before your first job
+              </h2>
+              <p className="mt-1 text-[13px] leading-relaxed text-[var(--muted)]">
+                World ID confirms you are a real person, so jobs cannot be
+                farmed by bots. Takes about a minute.
+              </p>
+              <ul className="mt-2.5 flex flex-wrap gap-x-3.5 gap-y-1">
+                {["Face never sent to us", "Valid 90 days"].map((line) => (
+                  <li
+                    key={line}
+                    className="flex items-center gap-1.5 text-[12px] text-[var(--faint)]"
+                  >
+                    <svg viewBox="0 0 12 12" fill="none" className="h-3 w-3 text-[var(--good)]">
+                      <path
+                        d="m2.5 6.2 2.2 2.2 4.8-4.8"
+                        stroke="currentColor"
+                        strokeWidth="1.8"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                      />
+                    </svg>
+                    {line}
+                  </li>
+                ))}
+              </ul>
+              <Link
+                href="/worker/profile"
+                className="mt-3.5 inline-flex h-10 items-center gap-2 rounded-xl bg-[var(--solid)] px-4 text-[13.5px] font-semibold text-[var(--solid-ink)] transition-opacity active:opacity-80"
+              >
+                <WorldMark />
+                Verify with World ID
+              </Link>
+            </div>
+          </div>
+        </div>
+      ) : error ? (
         <div className="mt-4 rounded-xl border border-[var(--line)] bg-[var(--surface)] px-4 py-3 text-[13px] text-[var(--bad)]">
           <p>{error}</p>
           <button
@@ -138,7 +197,7 @@ export default function WorkerJobs() {
             Try again
           </button>
         </div>
-      )}
+      ) : null}
 
       <div className="mt-5 flex flex-col gap-3">
         {busy ? (
