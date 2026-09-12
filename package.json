@@ -33,6 +33,7 @@
     "@privy-io/node": "0.34.0",
     "@privy-io/react-auth": "^3.41.0",
     "@supabase/supabase-js": "^2.116.0",
+    "@worldcoin/idkit": "^4.2.3",
     "dotenv": "17.4.2",
     "jsqr": "1.4.0",
     "mapbox-gl": "3.30.0",

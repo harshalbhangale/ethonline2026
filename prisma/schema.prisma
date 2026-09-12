@@ -555,13 +555,18 @@ model Job {
 }
 
 /// A person who can take paid physical work. Created by worker onboarding.
-/// World Selfie Check (Phase 4) sets `selfieCheckStatus`; until then it is
-/// recorded but not enforced.
+/// World Selfie Check sets `selfieCheckStatus`. It is enforced for every job
+/// action only while WORLD_SELFIE_CHECK_ENABLED is true.
 model WorkerProfile {
   id                String            @id @default(cuid())
   userId            String            @unique @map("user_id")
   displayName       String?           @map("display_name") @db.VarChar(80)
   selfieCheckStatus SelfieCheckStatus @default(NOT_STARTED) @map("selfie_check_status")
+  /// World nullifier for the verified credential. Unique: one human, one worker.
+  selfieNullifier   String?           @unique @map("selfie_nullifier") @db.VarChar(128)
+  selfieVerifiedAt  DateTime?         @map("selfie_verified_at") @db.Timestamptz(3)
+  /// Selfie Check is valid for 90 days; past this the worker re-verifies.
+  selfieExpiresAt   DateTime?         @map("selfie_expires_at") @db.Timestamptz(3)
   riskStatus        WorkerRiskStatus  @default(CLEAR) @map("risk_status")
   completedJobs     Int               @default(0) @map("completed_jobs")
   createdAt         DateTime          @default(now()) @map("created_at") @db.Timestamptz(3)
