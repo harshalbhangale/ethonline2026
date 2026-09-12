@@ -5,6 +5,14 @@ campaign: real posters at real locations, put up and independently checked by
 real people, paid automatically the moment a check is confirmed — all funded
 and settled onchain.
 
+Put simply: a brand types up what they want plastered around town and pays
+into the app, no crypto knowledge needed. Anyone else — literally anyone with
+a phone, no special skills or gear — can open the worker app, grab a nearby
+job, stick up a poster, snap a photo, and get paid in minutes once someone
+else confirms it's really there. You don't need to be a marketer or a
+blockchain person to run a campaign, and you don't need to be a courier
+company to go put posters up and earn from it.
+
 ## The idea, in one picture
 
 ```mermaid
