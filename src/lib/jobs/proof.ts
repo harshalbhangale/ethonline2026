@@ -47,12 +47,14 @@ function nextPlacementPath(
     (job) => job.role === (role === JobRole.INSTALLER ? JobRole.VERIFIER : JobRole.INSTALLER),
   );
 
+  // Self-verified placements still stop at the verifier step, so the check is
+  // a visible, separate action instead of being folded into the install.
   if (role === JobRole.INSTALLER && mode === VerificationMode.SELF) {
     if (status === PlacementStatus.INSTALLING) {
-      return [PlacementStatus.INSTALL_SUBMITTED, PlacementStatus.READY_FOR_FINAL_VERIFICATION];
+      return [PlacementStatus.INSTALL_SUBMITTED, PlacementStatus.AWAITING_VERIFIER];
     }
     if (status === PlacementStatus.NEEDS_RECAPTURE) {
-      return [PlacementStatus.READY_FOR_FINAL_VERIFICATION];
+      return [PlacementStatus.INSTALL_SUBMITTED, PlacementStatus.AWAITING_VERIFIER];
     }
   }
 

@@ -355,20 +355,18 @@ export default function JobDetail({
             }
             className="mt-4 w-full rounded-2xl bg-[var(--solid)] py-4 text-[16px] font-bold text-[var(--solid-ink)] disabled:opacity-35"
           >
-            {acting
-              ? "Submitting proof"
-              : job.verificationMode === "SELF"
-                ? "Stick & verify"
-                : "Submit proof"}
+            {acting ? "Submitting proof" : "Submit proof"}
           </button>
         </>
       )}
 
-      {job.status === "AWAITING_CHECK" && !job.isInstaller && (
+      {job.status === "AWAITING_CHECK" &&
+        (!job.isInstaller || job.verificationMode === "SELF") && (
         <div className="mt-6">
           <p className="text-[14px] leading-relaxed text-[var(--muted)]">
-            Someone put this poster up {formatDate(job.proofAt)}. Go to the spot and
-            confirm it is really there.
+            {job.isInstaller
+              ? "Now verify it. Confirm the poster is up and readable."
+              : `Someone put this poster up ${formatDate(job.proofAt)}. Go to the spot and confirm it is really there.`}
           </p>
           <button
             disabled={acting}
@@ -380,7 +378,9 @@ export default function JobDetail({
         </div>
       )}
 
-      {job.status === "AWAITING_CHECK" && job.isInstaller && (
+      {job.status === "AWAITING_CHECK" &&
+        job.isInstaller &&
+        job.verificationMode !== "SELF" && (
         <div className="mt-6 rounded-2xl border border-[var(--line)] bg-[var(--surface)] p-5">
           <p className="text-[15px] font-semibold">Waiting to be checked</p>
           <p className="mt-1.5 text-[14px] leading-relaxed text-[var(--muted)]">
