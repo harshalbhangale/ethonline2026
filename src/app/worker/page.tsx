@@ -31,7 +31,7 @@ function JobCard({ job, kind }: { job: Job; kind: "place" | "check" }) {
       <div className="flex items-start justify-between gap-4">
         <div className="min-w-0">
           <h3 className="flex items-center gap-2 text-[16px] font-semibold">
-            {kind === "place" ? "Stick 1 poster" : "Spot check 1 poster"}
+            {kind === "place" ? "Put up 1 poster" : "Verify 1 poster"}
             {kind === "check" ? (
               <span className="rounded-full bg-[var(--amber-soft)] px-2 py-0.5 text-[11px] font-semibold text-[var(--amber)]">
                 Quick
@@ -47,7 +47,7 @@ function JobCard({ job, kind }: { job: Job; kind: "place" | "check" }) {
             {formatMoney(fee, job.currency)}
           </span>
           <span className="mt-1 block text-[11px] text-[var(--faint)]">
-            {kind === "place" ? "to place" : "to check"}
+            {kind === "place" ? "to put up" : "to verify"}
           </span>
         </span>
       </div>
@@ -227,7 +227,7 @@ export default function WorkerJobs() {
           <>
             {checkJobs.length > 0 && (
               <>
-                <SectionLabel count={checkJobs.length}>Quick checks</SectionLabel>
+                <SectionLabel count={checkJobs.length}>Verify a poster</SectionLabel>
                 {checkJobs.map((job) => (
                   <JobCard key={`c-${job.id}`} job={job} kind="check" />
                 ))}

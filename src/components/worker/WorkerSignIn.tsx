@@ -18,7 +18,7 @@ export default function WorkerSignIn() {
           Get paid.
         </h1>
         <p className="mt-3 text-[15px] leading-relaxed text-[var(--muted)]">
-          Jobs near you, paid instantly once your poster checks out.
+          Put posters up, or verify someone else&apos;s. Both pay, both near you.
         </p>
 
         <button

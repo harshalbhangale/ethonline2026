@@ -292,7 +292,6 @@ export async function listCheckableTasks(context: WorkerContext) {
       OR: [
         {
           status: PlacementStatus.AWAITING_VERIFIER,
-          installerUserId: { not: context.userId },
           jobs: { some: { role: JobRole.VERIFIER, status: JobStatus.OPEN } },
         },
         {
