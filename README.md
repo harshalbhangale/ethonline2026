@@ -13,6 +13,9 @@ else confirms it's really there. You don't need to be a marketer or a
 blockchain person to run a campaign, and you don't need to be a courier
 company to go put posters up and earn from it.
 
+## Docs : 
+https://app.notion.com/p/STICKERBOMB-06e92e85056383f8b6350128c7fc41da?source=copy_link
+
 ## The idea, in one picture
 
 ```mermaid
