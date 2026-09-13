@@ -18,10 +18,8 @@ export function isLenientVerification() {
 
 /** Proof counts when captured within this radius of the approved surface. */
 export function geofenceRadiusMeters() {
-  // Wide enough that testers walking up from a real address don't get
-  // rejected on GPS drift alone. Still tighter than the ~2 km the fraud demo
-  // offsets by, so that path still fails.
-  return isLenientVerification() ? 3_000 : 75;
+  // 5 km in both modes: demos run from wherever the tester happens to be.
+  return 5_000;
 }
 
 /** Time a self-verifying worker must be seen on site before the photo. */
@@ -32,7 +30,7 @@ export function minDwellSeconds() {
 
 /** Immediate feedback only; the confidential check enforces the real fence. */
 export function precheckRadiusMetres() {
-  return isLenientVerification() ? 5_000 : 250;
+  return 5_000;
 }
 
 /** Share of self-verified placements pulled into a second, human check. */

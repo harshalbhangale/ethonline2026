@@ -55,7 +55,7 @@ function TaskCard({ job }: { job: Job }) {
             {job.placementInstructions ?? job.venueName}
           </h3>
           <p className="mt-1 text-[13px] text-[var(--muted)]">
-            {asInstaller ? "You stick & verify this" : "You are spot checking this"}
+            {asInstaller ? "You put this up" : "You are verifying this"}
           </p>
         </div>
         <span className="shrink-0 text-[16px] font-bold tracking-[-0.02em]">

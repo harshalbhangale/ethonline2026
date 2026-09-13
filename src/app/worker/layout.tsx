@@ -67,7 +67,7 @@ function ActiveJobBar() {
     active.status === "NEEDS_RECAPTURE"
       ? "Retake the photo"
       : active.isInstaller
-        ? "Head there, stick & verify"
+        ? "Head there and put it up"
         : "Check the poster";
 
   return (
