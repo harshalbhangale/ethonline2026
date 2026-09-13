@@ -44,47 +44,6 @@ function Mark() {
   );
 }
 
-/** A QR glyph drawn as a grid, so no image request is needed. */
-function QrGlyph({ className = "" }: { className?: string }) {
-  // A fixed pattern: readable as a QR at a glance without pretending to scan.
-  const cells = [
-    "1110111011101110",
-    "1000101010001010",
-    "1011100010111000",
-    "1000101110001011",
-    "1110001011100010",
-    "0001110100011101",
-    "1101000111010001",
-    "0010111000101110",
-    "1110001011100010",
-    "1000111010001110",
-    "1011101010111010",
-    "1000100010001000",
-    "1110111011101110",
-    "0101000101010001",
-    "1010111010101110",
-    "1110001011100010",
-  ];
-
-  return (
-    <div
-      className={`grid aspect-square w-full gap-[2px] ${className}`}
-      style={{ gridTemplateColumns: "repeat(16, minmax(0, 1fr))" }}
-      aria-hidden
-    >
-      {cells.flatMap((row, y) =>
-        row.split("").map((cell, x) => (
-          <span
-            key={`${y}-${x}`}
-            className="aspect-square rounded-[1px]"
-            style={{ background: cell === "1" ? "currentColor" : "transparent" }}
-          />
-        )),
-      )}
-    </div>
-  );
-}
-
 /** A poster pinned inside corner brackets: "a surface, claimed". */
 function SurfaceMark() {
   return (
@@ -189,14 +148,16 @@ export default function LandingPage({
             </span>
 
             <h1 className="mt-6 font-extrabold leading-[1.0] tracking-[-0.045em] fluid-h1">
-              Posters on the street.
+              Your poster.
               <br />
-              <span className="text-badge">Proof on the chain.</span>
+              Their street.{" "}
+              <span className="text-badge">Today.</span>
             </h1>
 
             <p className="mx-auto mt-6 max-w-[56ch] leading-relaxed text-muted fluid-lead">
-              Run a physical campaign from one sentence. Workers place it,
-              proof clears, escrow pays out.
+              Brands run physical campaigns in cities they&apos;ve never set foot
+              in. Local crew put them up, a local verifier confirms it, and
+              everyone&apos;s paid the same day.
             </p>
 
             <div className="mt-9 flex flex-col items-center justify-center gap-3 min-[480px]:flex-row">
@@ -241,27 +202,6 @@ export default function LandingPage({
                 }}
               />
             </div>
-
-            {/* Live-scan card pinned to the image corner. */}
-            <motion.div
-              initial={reduce ? false : { opacity: 0, scale: 0.94 }}
-              animate={reduce ? undefined : { opacity: 1, scale: 1 }}
-              transition={{ duration: 0.5, delay: 0.55 }}
-              className="absolute -bottom-5 right-4 hidden items-center gap-3 rounded-2xl border border-line bg-raised/95 px-4 py-3 backdrop-blur-xl sm:flex lg:right-8"
-            >
-              <div className="h-11 w-11 shrink-0 text-ink">
-                <QrGlyph />
-              </div>
-              <div>
-                <div className="flex items-center gap-1.5 text-[13px] font-bold">
-                  <span className="h-1.5 w-1.5 rounded-full bg-paid" />
-                  Placement verified
-                </div>
-                <div className="text-[12px] text-muted">
-                  Escrow released to 2 wallets
-                </div>
-              </div>
-            </motion.div>
           </motion.div>
 
           {/* Stat strip. */}
@@ -280,7 +220,7 @@ export default function LandingPage({
       <section className="mx-auto max-w-[1180px] px-5 py-24 sm:px-8">
         <Reveal>
           <h2 className="max-w-[20ch] font-extrabold leading-[1.07] tracking-[-0.04em] fluid-h2">
-            Every surface is ad space.
+            No flights. No agency. No middlemen.
           </h2>
         </Reveal>
 
@@ -333,11 +273,11 @@ export default function LandingPage({
       <section className="mx-auto max-w-[1180px] px-5 py-24 sm:px-8">
         <Reveal>
           <h2 className="max-w-[20ch] font-extrabold leading-[1.07] tracking-[-0.04em] fluid-h2">
-            Two ways in.
+            Three ways in.
           </h2>
         </Reveal>
 
-        <div className="mt-12 grid gap-5 lg:grid-cols-2">
+        <div className="mt-12 grid gap-5 md:grid-cols-2 lg:grid-cols-3">
           <Reveal>
             <div className="flex h-full flex-col rounded-[24px] border border-line panel p-8 sm:p-10">
               <span className="inline-flex w-fit rounded-full border border-badge/40 px-3 py-1 text-[11.5px] font-bold uppercase tracking-[0.1em] text-badge">
@@ -362,13 +302,34 @@ export default function LandingPage({
           <Reveal delay={0.08}>
             <div className="flex h-full flex-col rounded-[24px] border border-line bg-surface p-8 sm:p-10">
               <span className="inline-flex w-fit rounded-full border border-line px-3 py-1 text-[11.5px] font-bold uppercase tracking-[0.1em] text-muted">
-                For workers
+                For crew
               </span>
               <h3 className="mt-5 text-[26px] font-extrabold leading-[1.1] tracking-[-0.03em]">
-                Put up posters. Get paid.
+                Put posters up. Get paid today.
               </h3>
               <p className="mt-4 text-[15px] leading-relaxed text-muted">
                 Jobs near you, paid from escrow that was funded up front.
+              </p>
+              <Link
+                href="/worker"
+                className="mt-8 inline-flex h-12 w-fit items-center rounded-xl border border-line bg-raised px-6 text-[15px] font-semibold transition-colors hover:bg-line/40"
+              >
+                Open the Worker Portal
+              </Link>
+            </div>
+          </Reveal>
+
+          <Reveal delay={0.16}>
+            <div className="flex h-full flex-col rounded-[24px] border border-line bg-surface p-8 sm:p-10">
+              <span className="inline-flex w-fit rounded-full border border-line px-3 py-1 text-[11.5px] font-bold uppercase tracking-[0.1em] text-muted">
+                For verifiers
+              </span>
+              <h3 className="mt-5 text-[26px] font-extrabold leading-[1.1] tracking-[-0.03em]">
+                Check someone&apos;s work. Get paid for that too.
+              </h3>
+              <p className="mt-4 text-[15px] leading-relaxed text-muted">
+                A few minutes at a poster someone else put up. Same escrow, same
+                day.
               </p>
               <Link
                 href="/worker"
@@ -394,7 +355,7 @@ export default function LandingPage({
           />
           <Reveal className="relative">
             <h2 className="mx-auto max-w-[18ch] font-extrabold leading-[1.04] tracking-[-0.045em] fluid-h2-lg">
-              Put it up. Prove it.
+              Run it anywhere.
             </h2>
             <p className="mx-auto mt-5 max-w-[50ch] text-[16px] leading-relaxed text-muted">
               Start a campaign, or start earning.
