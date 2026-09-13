@@ -237,7 +237,7 @@ export async function acceptJob(
     const job = await transaction.job.findUnique({
       where: { id: jobId },
       include: {
-        placement: { select: { id: true, installerUserId: true } },
+        placement: { select: { id: true, installerUserId: true, verificationMode: true } },
         campaign: { select: { status: true, fundedAt: true } },
       },
     });
@@ -250,7 +250,9 @@ export async function acceptJob(
       throw jobUnavailable();
     }
 
-    if (job.role === JobRole.VERIFIER) {
+    // SELF mode lets the installer also take the independent check; only
+    // INDEPENDENT mode requires a different worker.
+    if (job.role === JobRole.VERIFIER && job.placement.verificationMode !== "SELF") {
       assertIndependentVerifier(job.placement.installerUserId, context.userId);
     }
 
