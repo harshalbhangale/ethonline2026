@@ -298,7 +298,10 @@ export async function acceptJob(
         where: { id: job.placement.id },
         data: { installerUserId: context.userId },
       });
-    } else if (job.role === JobRole.VERIFIER) {
+    } else if (job.role === JobRole.VERIFIER && job.placement.installerUserId !== context.userId) {
+      // A self-verifying installer stays null here (DB constraint forbids
+      // installer_user_id = verifier_user_id); the escrow uses the installer's
+      // own wallet for both roles at settlement instead.
       await transaction.placement.update({
         where: { id: job.placement.id },
         data: { verifierUserId: context.userId },
