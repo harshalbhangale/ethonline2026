@@ -284,7 +284,11 @@ export async function listPlaceableTasks(context: WorkerContext) {
   return placements.map((placement) => toTask(placement, context.userId));
 }
 
-/** Checks this worker may take. Their own installations never appear. */
+/**
+ * Checks this worker may take. Self-verification is currently allowed, so a
+ * worker's own installations appear here too; `assertIndependentVerifier`
+ * enforces whatever the deployment permits at accept time.
+ */
 export async function listCheckableTasks(context: WorkerContext) {
   const placements = await getPrismaClient().placement.findMany({
     where: {
@@ -292,7 +296,6 @@ export async function listCheckableTasks(context: WorkerContext) {
       OR: [
         {
           status: PlacementStatus.AWAITING_VERIFIER,
-          installerUserId: { not: context.userId },
           jobs: { some: { role: JobRole.VERIFIER, status: JobStatus.OPEN } },
         },
         {

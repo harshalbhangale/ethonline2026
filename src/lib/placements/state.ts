@@ -74,10 +74,17 @@ export function assertPlacementTransition(
   }
 }
 
+/** Demo escape hatch: lets one person walk both halves of the flow. */
+function allowSelfVerification() {
+  return process.env.ALLOW_SELF_VERIFICATION === "true";
+}
+
 export function assertIndependentVerifier(
   installerUserId: string | null,
   verifierUserId: string,
 ) {
+  if (allowSelfVerification()) return;
+
   if (installerUserId === verifierUserId) {
     throw new ApiError(
       403,

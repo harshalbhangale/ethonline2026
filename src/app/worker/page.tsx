@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useState, type ReactNode } from "react";
 import { useWorker } from "@/components/worker/WorkerStore";
 import JobCardSkeleton from "@/components/worker/Skeleton";
 import { feeForWorker, formatDate, formatMoney, type Job } from "@/lib/worker-data";
@@ -19,6 +20,19 @@ function WorldMark() {
   );
 }
 
+function Step({ children, done = false }: { children: ReactNode; done?: boolean }) {
+  return (
+    <span className="inline-flex items-center gap-1">
+      <span
+        className={`h-1.5 w-1.5 rounded-full ${
+          done ? "bg-[var(--amber)]" : "bg-[var(--faint)]"
+        }`}
+      />
+      {children}
+    </span>
+  );
+}
+
 function JobCard({ job, kind }: { job: Job; kind: "place" | "check" }) {
   const fee = feeForWorker(job, kind === "check");
   const mine = kind === "place" && job.isInstaller;
@@ -31,13 +45,23 @@ function JobCard({ job, kind }: { job: Job; kind: "place" | "check" }) {
       <div className="flex items-start justify-between gap-4">
         <div className="min-w-0">
           <h3 className="flex items-center gap-2 text-[16px] font-semibold">
-            {kind === "place" ? "Stick 1 poster" : "Spot check 1 poster"}
+            {kind === "place" ? "Put up 1 poster" : "Verify 1 poster"}
             {kind === "check" ? (
               <span className="rounded-full bg-[var(--amber-soft)] px-2 py-0.5 text-[11px] font-semibold text-[var(--amber)]">
                 Quick
               </span>
             ) : null}
           </h3>
+          {/* A self-verified placement is one trip: both steps on one card. */}
+          {kind === "place" && job.verificationMode === "SELF" ? (
+            <p className="mt-1.5 flex items-center gap-1.5 text-[12.5px] text-[var(--muted)]">
+              <Step done>Put it up</Step>
+              <svg viewBox="0 0 12 12" fill="none" className="h-2.5 w-2.5 shrink-0 text-[var(--faint)]">
+                <path d="m4 2.5 3.5 3.5L4 9.5" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+              <Step>Verify it</Step>
+            </p>
+          ) : null}
           <p className="mt-1 truncate text-[14px] text-[var(--muted)]">
             {job.venueName} · {job.city}
           </p>
@@ -47,7 +71,11 @@ function JobCard({ job, kind }: { job: Job; kind: "place" | "check" }) {
             {formatMoney(fee, job.currency)}
           </span>
           <span className="mt-1 block text-[11px] text-[var(--faint)]">
-            {kind === "place" ? "to place" : "to check"}
+            {kind === "check"
+              ? "to verify"
+              : job.verificationMode === "SELF"
+                ? "both steps"
+                : "to put up"}
           </span>
         </span>
       </div>
@@ -87,21 +115,53 @@ function JobCard({ job, kind }: { job: Job; kind: "place" | "check" }) {
   );
 }
 
-function SectionLabel({ children, count }: { children: string; count: number }) {
+function EmptySlot({ children }: { children: ReactNode }) {
   return (
-    <div className="mt-6 flex items-center gap-2.5 first:mt-0">
-      <h2 className="text-[13px] font-semibold uppercase tracking-[0.07em] text-[var(--faint)]">
-        {children}
-      </h2>
-      <span className="rounded-full bg-[var(--raised)] px-2 py-0.5 text-[11px] font-semibold text-[var(--muted)]">
+    <div className="rounded-2xl border border-dashed border-[var(--line)] bg-[var(--surface)] px-4 py-5">
+      <p className="text-[13px] leading-relaxed text-[var(--faint)]">{children}</p>
+    </div>
+  );
+}
+
+function Tab({
+  active,
+  count,
+  onClick,
+  children,
+}: {
+  active: boolean;
+  count: number;
+  onClick: () => void;
+  children: string;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-pressed={active}
+      className={`flex flex-1 items-center justify-center gap-2 rounded-xl py-2.5 text-[13.5px] font-semibold transition-colors ${
+        active
+          ? "bg-[var(--solid)] text-[var(--solid-ink)]"
+          : "text-[var(--muted)] active:bg-[var(--raised)]"
+      }`}
+    >
+      {children}
+      <span
+        className={`rounded-full px-1.5 py-0.5 text-[11px] font-bold ${
+          active
+            ? "bg-[var(--solid-ink)]/12 text-[var(--solid-ink)]"
+            : "bg-[var(--raised)] text-[var(--muted)]"
+        }`}
+      >
         {count}
       </span>
-    </div>
+    </button>
   );
 }
 
 export default function WorkerJobs() {
   const { placeJobs, checkJobs, ready, loading, error, errorCode, refresh } = useWorker();
+  const [tab, setTab] = useState<"place" | "check">("place");
   const total = placeJobs.length + checkJobs.length;
   const busy = !ready || loading;
 
@@ -202,45 +262,46 @@ export default function WorkerJobs() {
       <div className="mt-5 flex flex-col gap-3">
         {busy ? (
           <JobCardSkeleton />
-        ) : total === 0 ? (
-          <div className="rounded-2xl border border-dashed border-[var(--line)] bg-[var(--surface)] px-6 py-12 text-center">
-            <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-[var(--raised)]">
-              <svg viewBox="0 0 24 24" fill="none" className="h-6 w-6 text-[var(--faint)]">
-                <circle cx="11" cy="11" r="6.5" stroke="currentColor" strokeWidth="1.7" />
-                <path
-                  d="m16 16 4 4"
-                  stroke="currentColor"
-                  strokeWidth="1.7"
-                  strokeLinecap="round"
-                />
-              </svg>
-            </div>
-            <p className="mt-4 text-[15px] font-semibold">
-              Nothing near you right now
-            </p>
-            <p className="mx-auto mt-1.5 max-w-[34ch] text-[13px] leading-relaxed text-[var(--muted)]">
-              New jobs appear as soon as a brand funds a campaign. Pull the refresh
-              button to check again.
-            </p>
-          </div>
         ) : (
           <>
-            {checkJobs.length > 0 && (
-              <>
-                <SectionLabel count={checkJobs.length}>Quick checks</SectionLabel>
-                {checkJobs.map((job) => (
-                  <JobCard key={`c-${job.id}`} job={job} kind="check" />
-                ))}
-              </>
-            )}
+            <div className="flex gap-1 rounded-2xl border border-[var(--line)] bg-[var(--surface)] p-1">
+              <Tab
+                active={tab === "place"}
+                count={placeJobs.length}
+                onClick={() => setTab("place")}
+              >
+                Put up
+              </Tab>
+              <Tab
+                active={tab === "check"}
+                count={checkJobs.length}
+                onClick={() => setTab("check")}
+              >
+                Verify
+              </Tab>
+            </div>
 
-            {placeJobs.length > 0 && (
-              <>
-                <SectionLabel count={placeJobs.length}>Put up a poster</SectionLabel>
-                {placeJobs.map((job) => (
+            {tab === "place" ? (
+              placeJobs.length > 0 ? (
+                placeJobs.map((job) => (
                   <JobCard key={`p-${job.id}`} job={job} kind="place" />
-                ))}
-              </>
+                ))
+              ) : (
+                <EmptySlot>
+                  Nothing to put up nearby. New jobs land here as soon as a
+                  brand funds a campaign.
+                </EmptySlot>
+              )
+            ) : checkJobs.length > 0 ? (
+              checkJobs.map((job) => (
+                <JobCard key={`c-${job.id}`} job={job} kind="check" />
+              ))
+            ) : (
+              <EmptySlot>
+                Nothing to verify right now. These appear when a poster someone
+                else put up gets drawn for a second check — a few minutes of
+                work, paid like any other job.
+              </EmptySlot>
             )}
           </>
         )}

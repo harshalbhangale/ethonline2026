@@ -21,7 +21,7 @@ flowchart LR
     Wizard -->|"2. Fund"| Escrow["CampaignEscrow<br/>(Sepolia)"]
     Escrow -->|"3. Reserves reward<br/>per placement"| Poster["Printed poster<br/>+ unique QR"]
     Poster -->|"4. Installed by"| Installer["Worker: installer"]
-    Installer -->|"5. Independently checked by"| Verifier["Worker: verifier<br/>(never the installer)"]
+    Installer -->|"5. Checked by"| Verifier["Worker: verifier"]
     Verifier -->|"6. Confirmed"| Verify["Verification"]
     Verify -->|"7. Approved"| Escrow
     Escrow -->|"8. Payout"| Wallets["Installer + verifier<br/>Privy wallets"]
@@ -40,9 +40,12 @@ progress: which posters are up, which are verified, and where the money went.
 
 **A worker** opens the PWA on their phone, picks a nearby open job, walks over,
 puts the poster up, and photographs it with their GPS location attached. A
-*different* worker then independently confirms it's really there — the same
-person can never install and verify their own poster. The moment that check is
-confirmed, both of them get paid, onchain, automatically.
+second worker then confirms it's really there. The moment that check is
+confirmed, both roles get paid, onchain, automatically.
+
+Whether the installer may take that check themselves is a deployment setting
+(`ALLOW_SELF_VERIFICATION`, see [Verification settings](#verification-settings)).
+Set it to `false` and the two roles must be different people.
 
 ## Brand flow, step by step
 
@@ -80,7 +83,7 @@ sequenceDiagram
     W1->>App: Accept an open job (sees only an approximate area)
     W1->>App: Put poster up, upload photo + GPS fix
     App->>App: Fingerprint the photo (sha256)
-    App-->>W2: Job opens for an independent check<br/>(never the installer)
+    App-->>W2: Job opens for a check
     W2->>App: Confirm with own photo + GPS,<br/>or report it missing
     alt Confirmed
         App->>E: Record both payout wallets, request verification
@@ -91,17 +94,17 @@ sequenceDiagram
     end
 ```
 
-The installer never sees who checks their work, and a worker can never accept
-the check for a poster they installed themselves — that separation is enforced
-by the app and by the escrow contract, not just by convention.
+The installer never sees who checks their work. Whether they can take the
+check themselves is controlled by `ALLOW_SELF_VERIFICATION`; with it off, the
+server refuses the accept and the two roles must be distinct people.
 
 ## What each piece is for
 
 | Layer | What it does | Why it exists |
 | --- | --- | --- |
 | **Privy** | Sign-in, and a server-side wallet per brand ("the treasury") that only StickerBomb's server can drive, under a policy that restricts it to funding campaigns | So a brand doesn't need a crypto wallet, and no employee ever holds a key that could move the treasury's funds elsewhere |
-| **CampaignEscrow (Sepolia)** | Holds a campaign's budget, reserves per-placement rewards, and pays workers only on an approved verification | So the money rules (who can fund, who can get paid, that installer ≠ verifier) are guaranteed by a contract, not just app logic |
-| **Verification** | Independently checks that a poster's proof is genuine — right location, right QR, a fresh photo, installer and verifier really are two different people — before approving payout | So payment reflects real, independently-confirmed work rather than a self-reported "done" |
+| **CampaignEscrow (Sepolia)** | Holds a campaign's budget, reserves per-placement rewards, and pays workers only on an approved verification | So the money rules (who can fund, who can get paid, what a placement is worth) are guaranteed by a contract, not just app logic |
+| **Verification** | Checks that a poster's proof is genuine — right location, right QR, a fresh photo, no reused media — before approving payout | So payment reflects real, confirmed work rather than a self-reported "done" |
 | **Worker PWA (`/worker`)** | An installable phone app for accepting jobs, uploading proof photos with GPS, and running independent checks | Installing and checking posters happens in the field, from a phone, not a desk |
 | **Scan analytics** | Counts and de-duplicates QR scans from the public, without ever storing who scanned | Engagement data for the brand — it never proves installation and never triggers a payout |
 
@@ -140,8 +143,8 @@ An installable mobile app (manifest, service worker, bottom tabs) for the
 people who put posters up and check them:
 
 - **Jobs**: open placements with only an approximate area until accepted, and
-  independent checks. A worker never sees, and cannot take, the check of a
-  poster they installed.
+  checks. The Put up and Verify tabs are separate lists; a worker sees the
+  check for their own poster only when `ALLOW_SELF_VERIFICATION` is on.
 - **Proof**: the phone uploads its photo straight to the private Supabase
   `proofs` bucket through a signed URL, with its GPS fix. The server stores the
   photo's sha256 as the evidence fingerprint.
@@ -304,6 +307,27 @@ listed once in `unusedOptionalModules` and applied to each.
 ```bash
 NEXT_DIST_DIR=.next-verify npm run build
 ```
+
+## Verification settings
+
+Server-only environment variables that change how proof is checked. They are
+deliberately not `NEXT_PUBLIC_`: whether a check is strict is not something the
+browser should be able to read.
+
+| Variable | Default | What it does |
+| --- | --- | --- |
+| `ALLOW_SELF_VERIFICATION` | `false` | `true` lets one account hold both the installer and verifier job for the same placement. Useful for demos and single-device testing. Set it to `false` for the real two-person rule. |
+| `STICKERBOMB_LENIENT_VERIFICATION` | `false` | `true` drops the on-site dwell requirement and disables the random spot check. It does **not** relax the geofence. |
+| `STICKERBOMB_SPOT_CHECK_PERCENT` | `10` | Share of placements pulled into an extra independent check after the confidential verdict approves. Ignored while lenient verification is on. |
+| `STICKERBOMB_MIN_DWELL_SECONDS` | `30` | Seconds a worker must be on site before their photo counts. Forced to `0` by lenient verification. |
+
+The geofence is a fixed 5 km in both modes, so a placement submitted from the
+wrong side of a city still fails.
+
+A self-verified placement still stops at the verifier step: the installer
+submits their proof, the placement moves to `AWAITING_VERIFIER`, and the check
+appears in the Worker PWA's **Verify** tab as a separate job with its own
+reward. Verification is never folded into the install.
 
 ## Authorization model
 
